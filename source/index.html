@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SELVA - 交互原型 (权限管理版)</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<div class="app">
+  <div class="sidebar" style="position:relative;">
+    <div class="logo"><div class="icon">S</div> SELVA</div>
+
+    <div class="nav-section">
+      <div class="nav-item active" data-page="dashboard" onclick="goPage('dashboard')"><span>📊</span> Dashboard</div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-item" data-page="projects" onclick="toggleProjectList(); goPage('projects')" style="display:flex; align-items:center;">
+        <span>📁</span> <span style="flex:1;">所有项目</span>
+        <span class="arrow collapsed" id="project-list-arrow" style="font-size:10px; transition:transform .2s; padding:4px;">▾</span>
+      </div>
+      <div class="nav-collapsible" id="project-list-collapsible" style="max-height:0;">
+        <div id="sidebar-project-list" style="padding-left: 12px;"></div>
+      </div>
+    </div>
+
+    <!-- Workspace sub-nav: visually nested under its project -->
+    <div id="workspace-nav" style="display:none;">
+      <div class="ws-nav-block">
+        <div class="ws-nav-header">
+          <span class="ws-proj-dot" id="ws-nav-dot"></span>
+          <span class="ws-proj-path" id="ws-nav-path">项目 / 文件夹</span>
+        </div>
+        <div class="nav-item" data-ws-section="workflow" onclick="setWorkspaceSection('workflow')"><span>⚡</span> 工作流</div>
+        <div class="nav-item" data-ws-section="toolbox" onclick="setWorkspaceSection('toolbox')"><span>🧰</span> 工具箱</div>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-item" data-page="library" onclick="goPage('library')"><span>📦</span> 我的资源库</div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-item" data-page="tasks" onclick="goPage('tasks')"><span>📋</span> 任务中心 <span class="badge" id="global-task-badge">1</span></div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-item" data-page="assets-center" onclick="goPage('assets-center')"><span>🎬</span> 素材中心</div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-item" data-page="stats" onclick="goPage('stats')"><span>📈</span> 生产统计</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-item" data-page="effects" onclick="goPage('effects')"><span>📉</span> 数据中心</div>
+    </div>
+
+    <div class="sidebar-bottom">
+      <div class="user-info" onclick="goPage('settings')">
+        <div class="avatar" id="current-avatar">A</div>
+        <div class="user-meta"><span id="current-name">张明</span> <small id="current-role">超级管理员</small></div>
+        <span style="color:#888; font-size: 16px; cursor:pointer;" title="系统设置">⚙</span>
+      </div>
+      <div class="sidebar-logout" onclick="toast('已退出登录（原型演示）')">
+        <span style="font-size:14px;">⇥</span> 退出登录
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- ==================== Dashboard ==================== -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-title">Dashboard</div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="label">今日生成</div><div class="value">12 <span>条视频</span></div><div class="trend">↑ 20% vs 昨日</div></div>
+        <div class="stat-card"><div class="label">本月消耗</div><div class="value">156 <span>Credits</span></div><div class="trend">剩余 344 Credits</div></div>
+        <div class="stat-card"><div class="label">任务进行中</div><div class="value">3 <span>个任务</span></div><div class="trend">2 个排队中</div></div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="section-title">近 7 日生产趋势</div>
+          <div class="chart-placeholder">
+            <div class="bar" style="height:40%"></div><div class="bar" style="height:65%"></div><div class="bar" style="height:50%"></div><div class="bar" style="height:80%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:90%"></div><div class="bar" style="height:70%"></div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="section-title">项目分布</div>
+          <div class="donut"></div>
+          <div style="text-align:center; font-size:12px; color:#888;">3 个活跃项目</div>
+        </div>
+      </div>
+      <div class="section-title">最近项目 <a style="font-size:13px; color:#a78bfa; cursor:pointer;" onclick="goPage('projects')">查看全部 →</a></div>
+      <div class="projects-grid" id="dashboard-recent"></div>
+    </div>
+
+    <!-- ==================== Projects ==================== -->
+    <div class="page" id="page-projects">
+      <div class="projects-header">
+        <div class="page-title" style="margin-bottom:0;">项目空间</div>
+        <button class="btn btn-primary" id="btn-new-project" onclick="showModal('project')">+ 新建项目</button>
+      </div>
+      <!-- Filter tabs -->
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <button class="btn btn-sm" id="filter-all" onclick="setFilter('all')" style="background:#7c3aed33;color:#a78bfa;">全部</button>
+        <button class="btn btn-ghost btn-sm" id="filter-my" onclick="setFilter('my')">我的项目</button>
+        <button class="btn btn-ghost btn-sm" id="filter-shared" onclick="setFilter('shared')">共享项目</button>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; align-items:center;">
+        <input type="text" placeholder="搜索项目名称、客户、产品..." id="project-search" oninput="renderProjects()" style="flex:1; min-width:200px; background:#16161f; border:1px solid #1e1e2e; border-radius:8px; padding:10px 14px; color:#e0e0e0; font-size:13px; outline:none;">
+        <select id="project-filter-industry" onchange="renderProjects()" style="width:140px; background:#16161f; border:1px solid #1e1e2e; border-radius:8px; padding:10px 14px; color:#e0e0e0; font-size:13px; outline:none; cursor:pointer;">
+          <option value="">全部行业</option>
+        </select>
+        <select id="project-filter-media" onchange="renderProjects()" style="width:140px; background:#16161f; border:1px solid #1e1e2e; border-radius:8px; padding:10px 14px; color:#e0e0e0; font-size:13px; outline:none; cursor:pointer;">
+          <option value="">全部媒体</option>
+          <option value="kwai">Kwai</option>
+          <option value="tt">TT</option>
+          <option value="kwai+tt">Kwai+TT</option>
+        </select>
+      </div>
+      <div class="projects-grid" id="projects-list"></div>
+    </div>
+
+    <!-- ==================== Folder View ==================== -->
+    <div class="page" id="page-folder">
+      <div class="breadcrumb" id="breadcrumb"></div>
+      <div class="projects-header">
+        <div class="page-title" style="margin-bottom:0;" id="folder-title"></div>
+        <div style="display:flex; gap:8px;" id="folder-actions"></div>
+      </div>
+      <div id="folder-content"></div>
+    </div>
+
+    <!-- ==================== Workspace ==================== -->
+    <div class="page" id="page-workspace">
+      <div class="breadcrumb" id="ws-breadcrumb"></div>
+      <div class="workspace-header">
+        <div>
+          <h2 id="ws-title">工作台</h2>
+          <small style="color:#888;" id="ws-subtitle"></small>
+        </div>
+        <div class="actions">
+        </div>
+      </div>
+      <div id="ws-perm-notice" style="margin-bottom:20px;"></div>
+      <div id="ws-tab-content"></div>
+    </div>
+
+    <!-- ==================== Library ==================== -->
+    <div class="page" id="page-library">
+      <div id="library-content"></div>
+    </div>
+
+    <!-- Team and Groups management moved to System Settings modal -->
+
+    <!-- ==================== Global Task Center ==================== -->
+    <div class="page" id="page-tasks">
+      <div id="tasks-content"></div>
+    </div>
+
+    <!-- ==================== Settings ==================== -->
+    <div class="page" id="page-settings" style="padding:0;">
+      <div class="settings-layout">
+        <div class="settings-nav" id="settings-nav"></div>
+        <div class="settings-panel" id="settings-panel"></div>
+      </div>
+    </div>
+
+    <!-- ==================== Stats ==================== -->
+    <div class="page" id="page-stats">
+      <div id="stats-content"></div>
+    </div>
+
+    <!-- ==================== Effects ==================== -->
+    <div class="page" id="page-effects">
+      <div id="effects-content"></div>
+    </div>
+
+    <!-- ==================== Assets Center ==================== -->
+    <div class="page" id="page-assets-center">
+      <div id="assets-center-content"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== Unified Modal ==================== -->
+<div class="modal-overlay" id="modal-overlay" onclick="hideModal()">
+  <div class="modal" id="modal-body" onclick="event.stopPropagation()"></div>
+</div>
+
+<!-- Context Menu -->
+<div class="context-menu" id="context-menu"></div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="./data.js"></script>
+<script src="./state.js"></script>
+<script src="./render/helpers.js"></script>
+<script src="./actions/navigation.js"></script>
+<script src="./render/pages.js"></script>
+<script src="./actions/interactions.js"></script>
+<script src="./app.js"></script>
+
+</body>
+</html>
