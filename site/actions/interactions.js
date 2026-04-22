@@ -1867,61 +1867,62 @@ function pickNextFakeScriptFile(existingNames) {
   return { name: `${base.name} (${n})`, icon: base.icon };
 }
 
-function renderScriptSourceComposer(ctx) {
+function renderScriptSourceFilesBox(ctx) {
   const files = Array.isArray(ctx.files) ? ctx.files : [];
-  const upstream = ctx.upstream && ctx.upstream.label ? ctx.upstream : null;
-  const showUpstreamChip = !!(upstream && upstream.active);
-  const showUpstreamRestore = !!(upstream && !upstream.active);
-  const hasAnyChip = showUpstreamChip || files.length > 0;
-  const placeholder = ctx.placeholder || '描述创意方向、粘贴分析报告或参考脚本，也可拖入文件...';
+  const hasItems = files.length > 0;
   return `
-    <div class="script-composer"
+    <div class="script-files-box ${hasItems ? 'has-items' : 'empty'}"
          ondragover="handleScriptComposerDragOver(event, this)"
          ondragleave="handleScriptComposerDragLeave(event, this)"
-         ondrop="${ctx.dropCall}">
-      <div class="script-composer-inner">
-        ${hasAnyChip ? `
-          <div class="script-composer-chips">
-            ${showUpstreamChip ? `
-              <div class="script-composer-chip script-composer-chip--upstream" title="移除后 agent 不再沿用上游产出">
-                <span>✦ 来自『${escapeHtml(upstream.label)}』的产出</span>
-                <button type="button" class="script-composer-chip-remove" onclick="${ctx.removeUpstreamCall}" aria-label="移除上游">×</button>
-              </div>
-            ` : ''}
-            ${files.map(f => `
-              <div class="script-composer-chip">
-                <span>${f.icon || '📄'} ${escapeHtml(f.name)}</span>
-                <button type="button" class="script-composer-chip-remove" onclick="${ctx.removeFileCall.replace('__ID__', f.id)}" aria-label="移除文件">×</button>
-              </div>
-            `).join('')}
-          </div>
-        ` : ''}
-        <textarea class="script-composer-textarea" placeholder="${placeholder}" oninput="${ctx.textOninput}" spellcheck="false">${escapeHtml(ctx.text || '')}</textarea>
-        <button type="button" class="script-composer-attach" onclick="${ctx.addFileCall}" aria-label="附加文件" title="附加文件">📎</button>
-      </div>
+         ondrop="${ctx.dropCall}"
+         onclick="${ctx.addFileCall}">
+      ${hasItems ? `
+        <div class="script-composer-chips" onclick="event.stopPropagation()">
+          ${files.map(f => `
+            <div class="script-composer-chip">
+              <span>${f.icon || '📄'} ${escapeHtml(f.name)}</span>
+              <button type="button" class="script-composer-chip-remove" onclick="event.stopPropagation();${ctx.removeFileCall.replace('__ID__', f.id)}" aria-label="移除文件">×</button>
+            </div>
+          `).join('')}
+        </div>
+        <div class="script-files-box-hint">+ 继续添加文件（点击或拖入）</div>
+      ` : `
+        <div class="script-files-box-placeholder">
+          <div class="script-files-box-ptitle">点击或拖入文件上传</div>
+          <div class="script-files-box-psub">数量不限，支持分析报告 / 参考脚本 / 产品资料等任意类型文件</div>
+        </div>
+      `}
       <div class="script-composer-drop-overlay"><span>松开以添加文件</span></div>
     </div>
-    ${showUpstreamRestore ? `<button type="button" class="script-composer-restore" onclick="${ctx.restoreUpstreamCall}">+ 重新使用上游产出</button>` : ''}
   `;
 }
 
-function renderToolScriptSourceComposer() {
-  return renderScriptSourceComposer({
-    text: _toolScriptSource.text,
+function renderScriptSourceTextBox(ctx) {
+  const placeholder = ctx.placeholder || '描述创意方向、卖点要点、目标受众等，也可粘贴分析报告或参考脚本内容...';
+  return `
+    <textarea class="script-source-textarea" placeholder="${placeholder}" oninput="${ctx.textOninput}" spellcheck="false">${escapeHtml(ctx.text || '')}</textarea>
+  `;
+}
+
+function renderToolScriptFilesBox() {
+  return renderScriptSourceFilesBox({
     files: _toolScriptSource.files,
-    upstream: null,
-    textOninput: 'setToolScriptSourceText(this.value)',
     addFileCall: 'addToolScriptFakeFile()',
     removeFileCall: "removeToolScriptFakeFile('__ID__')",
-    removeUpstreamCall: '',
-    restoreUpstreamCall: '',
     dropCall: 'handleToolScriptDrop(event, this)'
   });
 }
 
+function renderToolScriptTextBox() {
+  return renderScriptSourceTextBox({
+    text: _toolScriptSource.text,
+    textOninput: 'setToolScriptSourceText(this.value)'
+  });
+}
+
 function rerenderToolScriptComposer() {
-  const container = document.getElementById('tool-script-composer');
-  if (container) container.innerHTML = renderToolScriptSourceComposer();
+  const container = document.getElementById('tool-script-files-box');
+  if (container) container.innerHTML = renderToolScriptFilesBox();
 }
 
 function setToolScriptSourceText(value) {
@@ -1962,9 +1963,12 @@ function renderToolFormScript() {
     <div class="form-card">
       <div class="form-card-title">📝 脚本生成 Agent 设置</div>
       <div class="form-field">
-        <label>脚本素材 <span class="required">*</span></label>
-        <div id="tool-script-composer">${renderToolScriptSourceComposer()}</div>
-        <small>支持创意描述、分析报告、参考脚本任意组合；文件拖入或点 📎 即可，agent 自行识别。</small>
+        <label>创意描述</label>
+        ${renderToolScriptTextBox()}
+      </div>
+      <div class="form-field">
+        <label>素材文件</label>
+        <div id="tool-script-files-box">${renderToolScriptFilesBox()}</div>
       </div>
       <div class="form-field">
         <label>内容类型 <span class="required">*</span></label>
@@ -3256,7 +3260,6 @@ function getWfNodeConfigDefaults(node) {
       return {
         scriptInputText: '',
         scriptInputFiles: [],
-        includeUpstream: true,
         contentType: '网赚类',
         voiceLanguage: '中文（简体）',
         videoDuration: '20s',
@@ -3408,7 +3411,6 @@ function syncWfScriptState(node, state) {
   if (!node || !state) return state;
   if (!Array.isArray(state.scriptInputFiles)) state.scriptInputFiles = [];
   if (typeof state.scriptInputText !== 'string') state.scriptInputText = '';
-  if (typeof state.includeUpstream !== 'boolean') state.includeUpstream = true;
   return state;
 }
 
@@ -3611,27 +3613,19 @@ function renderWfCheckboxList(nodeId, key, options, activeValues) {
   `;
 }
 
-function getScriptUpstreamDisplayNode(nodeId) {
-  const edge = _wfEdges.find(e => e.to === nodeId && _wfNodeDefs[e.from] && _wfNodeDefs[e.from].type !== 'start');
-  return edge ? _wfNodeDefs[edge.from] : null;
-}
-
-function renderWfScriptSourceComposer(nodeId, state) {
-  const upstreamNode = getScriptUpstreamDisplayNode(nodeId);
-  const upstreamLabel = upstreamNode ? (upstreamNode.label || upstreamNode.name || '上游节点') : '';
-  const upstream = upstreamLabel
-    ? { label: upstreamLabel, active: state.includeUpstream !== false }
-    : null;
-  return renderScriptSourceComposer({
-    text: state.scriptInputText || '',
+function renderWfScriptFilesBox(nodeId, state) {
+  return renderScriptSourceFilesBox({
     files: state.scriptInputFiles || [],
-    upstream,
-    textOninput: `setWfCfgValue('${nodeId}','scriptInputText',this.value)`,
     addFileCall: `addWfScriptFakeFile('${nodeId}')`,
     removeFileCall: `removeWfScriptFakeFile('${nodeId}','__ID__')`,
-    removeUpstreamCall: `setWfScriptIncludeUpstream('${nodeId}', false)`,
-    restoreUpstreamCall: `setWfScriptIncludeUpstream('${nodeId}', true)`,
     dropCall: `handleWfScriptDrop(event, this, '${nodeId}')`
+  });
+}
+
+function renderWfScriptTextBox(nodeId, state) {
+  return renderScriptSourceTextBox({
+    text: state.scriptInputText || '',
+    textOninput: `setWfCfgValue('${nodeId}','scriptInputText',this.value)`
   });
 }
 
@@ -3653,10 +3647,6 @@ function removeWfScriptFakeFile(nodeId, fileId) {
   const state = getWfNodeConfigState(node);
   state.scriptInputFiles = (state.scriptInputFiles || []).filter(f => f.id !== fileId);
   _renderWfCanvas();
-}
-
-function setWfScriptIncludeUpstream(nodeId, value) {
-  setWfCfgValue(nodeId, 'includeUpstream', value, true);
 }
 
 function handleWfScriptDrop(event, el, nodeId) {
@@ -3760,9 +3750,12 @@ function renderWfNodeConfig(node, wt) {
       const selectedKnowledgeBaseRefs = Array.isArray(state.knowledgeBaseRefs) ? state.knowledgeBaseRefs : [];
       fields += `
         <div class="cfg-row">
-          <div class="cfg-label">脚本素材</div>
-          ${renderWfScriptSourceComposer(node.id, state)}
-          <small class="cfg-help">支持创意描述、分析报告、参考脚本任意组合；文件拖入或点 📎 即可，agent 自行识别。</small>
+          <div class="cfg-label">创意描述</div>
+          ${renderWfScriptTextBox(node.id, state)}
+        </div>
+        <div class="cfg-row">
+          <div class="cfg-label">素材文件</div>
+          ${renderWfScriptFilesBox(node.id, state)}
         </div>
         <div class="cfg-row">
           <div class="cfg-label">内容类型</div>

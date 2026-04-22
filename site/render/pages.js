@@ -617,7 +617,8 @@ function isKnownProjectIndustry(value) {
 function normalizeProjectIndustry(value) {
   return isKnownProjectIndustry(value) ? value : 'other';
 }
-const DC_MEDIA = [{v:'all',l:'全部'},{v:'tt',l:'TT'},{v:'kwai',l:'Kwai'},{v:'kwai+tt',l:'Kwai+TT'}];
+const DC_MEDIA = [{v:'tt',l:'TT'},{v:'kwai',l:'Kwai'}];
+const DC_TIMEZONE = [{v:0,l:'UTC+0'},{v:8,l:'UTC+8'},{v:13,l:'UTC+13'}];
 const DC_MANAGER_BUSINESS = [
   { v: 'all', l: '全部' },
   { v: 'a', l: 'a类' },
@@ -961,47 +962,65 @@ function getAllDcVideos() {
   projects.forEach(project => {
     if (!canSeeProject(project)) return;
     const industry = dcDeriveIndustry(project);
+    const mediaList = project.media === 'kwai+tt' ? ['tt', 'kwai'] : [project.media];
     (project.folders || []).forEach(folder => {
       if (!canSeeFolder(folder)) return;
       (folder.files || []).forEach(file => {
         if (getFileType(file) !== 'video') return;
         const uploader = getUserById(file.creator);
         const business = uploader?.businessId || dcDeriveBusiness(project);
-        const key = project.id + '|' + folder.id + '|' + file.name;
-        const metrics = dcSeededMetrics(key);
-        const videoId = 'V-' + Math.abs(dcHashCode(key)).toString().padStart(10, '0').slice(0, 10);
-        list.push({
-          id: videoId,
-          name: file.name,
-          language: dcDeriveLanguage(file),
-          createdAt: dcResolveTime(file),
-          review: dcReviewTag(metrics),
-          media: project.media,
-          business,
-          industry,
-          client: project.client,
-          product: project.product,
-          uploader: file.creator,
-          subgroup: uploader?.subgroupKey || '',
-          managerScopeId: uploader?.managerScopeId || '',
-          thumbHue: file.thumbHue ?? 220,
-          thumbScene: file.thumbScene,
-          duration: file.duration,
-          status: file.status,
-          tags: file.tags || [],
-          taskId: file.taskId || null,
-          cost: metrics.cost,
-          imp: metrics.imp,
-          click: metrics.click,
-          conv: metrics.conv,
-          value: metrics.value,
-          _projectId: project.id,
-          _folderId: folder.id,
+        const keyBase = project.id + '|' + folder.id + '|' + file.name;
+        mediaList.forEach(platform => {
+          const key = mediaList.length > 1 ? keyBase + '|' + platform : keyBase;
+          const metrics = dcSeededMetrics(key);
+          const videoId = 'V-' + Math.abs(dcHashCode(key)).toString().padStart(10, '0').slice(0, 10);
+          list.push({
+            id: videoId,
+            name: file.name,
+            language: dcDeriveLanguage(file),
+            createdAt: dcResolveTime(file),
+            review: dcReviewTag(metrics),
+            media: platform,
+            business,
+            industry,
+            client: project.client,
+            product: project.product,
+            uploader: file.creator,
+            subgroup: uploader?.subgroupKey || '',
+            managerScopeId: uploader?.managerScopeId || '',
+            thumbHue: file.thumbHue ?? 220,
+            thumbScene: file.thumbScene,
+            duration: file.duration,
+            status: file.status,
+            tags: file.tags || [],
+            taskId: file.taskId || null,
+            cost: metrics.cost,
+            imp: metrics.imp,
+            click: metrics.click,
+            conv: metrics.conv,
+            value: metrics.value,
+            _projectId: project.id,
+            _folderId: folder.id,
+          });
         });
       });
     });
   });
   return list;
+}
+function applyDcTimezoneVariation(video, tz) {
+  if (!tz) return video;
+  const seed = dcHashCode(video.id + '|tz' + tz) >>> 0;
+  const r1 = ((seed * 1103515245 + 12345) >>> 0) % 1000 / 1000;
+  const r2 = (((seed ^ 0xdeadbeef) * 1103515245 + 12345) >>> 0) % 1000 / 1000;
+  const factor = 0.5 + r1 * 1.0;
+  const valueFactor = 0.7 + r2 * 1.1;
+  const cost = +(video.cost * factor).toFixed(2);
+  const imp = Math.round(video.imp * factor);
+  const click = Math.round(video.click * factor);
+  const conv = Math.max(1, Math.round(video.conv * factor));
+  const value = +(cost * valueFactor * 1.8).toFixed(2);
+  return { ...video, cost, imp, click, conv, value };
 }
 function getDcClientOptions() {
   const seen = new Set();
@@ -1026,8 +1045,8 @@ function getDcPeopleOptions() {
 }
 
 let dataCenterFilter = {
-  q:'', media:'all', business:'all', industry:'all', client:'all', product:'all', person:'all',
-  createdFrom:'', createdTo:'', publishFrom:'', publishTo:'', publishQuick:''
+  q:'', media:'tt', business:'all', industry:'all', client:'all', product:'all', person:'all',
+  createdFrom:'', createdTo:'', publishFrom:'', publishTo:'', publishQuick:'', timezone:0
 };
 let dcJumpOpen = null;
 const VIDEO_PLAYER_DEMO_SOURCES = [
@@ -1391,7 +1410,12 @@ function openVideoPlayerModalById(videoId, triggerEl) {
 }
 
 function setDcFilter(k, v) {
-  dataCenterFilter[k] = v;
+  if (k === 'timezone') {
+    dataCenterFilter.timezone = Number(v) || 0;
+  } else {
+    dataCenterFilter[k] = v;
+    if (k === 'media' && v !== 'kwai') dataCenterFilter.timezone = 0;
+  }
   dcPage = 1;
   renderDataCenterPage();
 }
@@ -1412,7 +1436,7 @@ function setDcPublishQuick(key) {
   renderDataCenterPage();
 }
 function resetDcFilter() {
-  dataCenterFilter = { q:'', media:'all', business:'all', industry:'all', client:'all', product:'all', person:'all', createdFrom:'', createdTo:'', publishFrom:'', publishTo:'', publishQuick:'' };
+  dataCenterFilter = { q:'', media:'tt', business:'all', industry:'all', client:'all', product:'all', person:'all', createdFrom:'', createdTo:'', publishFrom:'', publishTo:'', publishQuick:'', timezone:0 };
   dcPage = 1;
   renderDataCenterPage();
 }
@@ -1438,6 +1462,9 @@ function getDcFilteredVideos() {
   }
   if (f.createdFrom) list = list.filter(v => v.createdAt.slice(0,10) >= f.createdFrom);
   if (f.createdTo) list = list.filter(v => v.createdAt.slice(0,10) <= f.createdTo);
+  if (f.media === 'kwai' && f.timezone) {
+    list = list.map(v => applyDcTimezoneVariation(v, f.timezone));
+  }
   return list;
 }
 
@@ -1734,7 +1761,13 @@ function renderDataCenterPage() {
 
   const dateInput = (name, value) => `<input type="date" value="${value||''}" onchange="setDcFilter('${name}', this.value)" style="background:#16161f;border:1px solid #2a2a3a;border-radius:8px;color:#e0e0e0;padding:6px 8px;font-size:12px;outline:none;">`;
 
-  const tz = '<span style="font-size:11px; color:#666; background:#0a0a0f; border:1px solid #2a2a3a; border-radius:6px; padding:3px 8px; cursor:not-allowed;" title="时区已锁定">🕒 UTC+00:00</span>';
+  const tzValue = Number(f.timezone) || 0;
+  const tzLabel = (DC_TIMEZONE.find(o => o.v === tzValue) || DC_TIMEZONE[0]).l;
+  const tzSelector = f.media === 'kwai'
+    ? `<select onchange="setDcFilter('timezone', this.value)" style="background:#16161f;border:1px solid #2a2a3a;border-radius:6px;color:#e0e0e0;padding:4px 8px;font-size:12px;outline:none;cursor:pointer;">
+        ${DC_TIMEZONE.map(o => `<option value="${o.v}" ${tzValue===o.v?'selected':''}>🕒 ${o.l}</option>`).join('')}
+      </select>`
+    : `<span style="font-size:12px; color:#888; background:#0a0a0f; border:1px solid #2a2a3a; border-radius:6px; padding:4px 10px; cursor:not-allowed;" title="TT 默认 UTC+0，不可切换">🕒 ${tzLabel}</span>`;
 
   const sumRow = `
     <tr style="background:#1a1a26; font-weight:600;">
@@ -1805,7 +1838,6 @@ function renderDataCenterPage() {
   container.innerHTML = `
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
       <div class="page-title" style="margin:0;">数据中心</div>
-      ${tz}
     </div>
 
     <div style="background:#11111a; border:1px solid #1e1e2e; border-radius:12px; padding:16px; margin-bottom:20px;">
@@ -1850,7 +1882,7 @@ function renderDataCenterPage() {
     <div style="background:#11111a; border:1px solid #1e1e2e; border-radius:12px; overflow:hidden;">
       <div style="padding:12px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #1e1e2e;">
         <div style="font-size:13px; color:#888;">共 <strong style="color:#e0e0e0;">${list.length}</strong> 条视频${isMember ? '（仅展示本人视频）' : currentUser.role === 'leader' ? '（仅展示下层组员视频）' : currentUser.role === 'manager' ? '（仅展示负责业务成员视频）' : ''}</div>
-        <div style="font-size:11px; color:#666;">绿色字段为核心指标 · 点击视频缩略图预览</div>
+        ${tzSelector}
       </div>
       <div style="overflow-x:auto;">
         <table style="width:100%; border-collapse:collapse; min-width:1500px;">

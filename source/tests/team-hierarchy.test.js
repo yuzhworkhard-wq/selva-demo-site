@@ -65,7 +65,7 @@ test('data center visibility follows hierarchy scope', () => {
 test('manager data center list is scoped by hierarchy and subgroup filter', () => {
   const app = loadApp();
   app.setCurrentUserById('u5');
-  app.eval("dataCenterFilter = { q:'', media:'all', business:'all', industry:'all', client:'all', product:'all', person:'all', createdFrom:'', createdTo:'', publishFrom:'', publishTo:'', publishQuick:'' };");
+  app.eval("dataCenterFilter = { q:'', media:'all', business:'all', industry:'all', client:'all', product:'all', person:'all', createdFrom:'', createdTo:'', publishFrom:'', publishTo:'', publishQuick:'', timezone:0 };");
 
   const visibleUploaders = normalize([...new Set(app.call('getDcFilteredVideos').map(video => video.uploader))].sort());
   assert.deepEqual(visibleUploaders, ['u2', 'u4', 'u6', 'u8']);

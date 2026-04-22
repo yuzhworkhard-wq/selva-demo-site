@@ -1191,7 +1191,6 @@
     white-space: nowrap;
     max-width: 240px;
   }
-  .script-composer-chip--upstream { border-color: #7c3aed55; background: #7c3aed1a; color: #c4b5fd; }
   .script-composer-chip-remove {
     background: transparent;
     border: none;
@@ -1266,22 +1265,66 @@
     backdrop-filter: blur(1px);
   }
   .script-composer--drag .script-composer-drop-overlay { display: flex; }
-  .script-composer-restore {
-    margin-top: 8px;
-    background: transparent;
-    border: 1px dashed #2a2a3a;
-    color: #888;
-    font-size: 12px;
-    padding: 6px 12px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all .15s;
-  }
-  .script-composer-restore:hover { border-color: #7c3aed; color: #a78bfa; }
 
   .wf-config-body .script-composer { background: #0e0e16; }
   .wf-config-body .script-composer-chip { background: #16161f; }
   .wf-config-body .script-composer-chip > span { max-width: 180px; }
+
+  /* Split layout: dedicated files upload box + standalone description textarea */
+  .script-files-box {
+    position: relative;
+    min-height: 92px;
+    border: 1px dashed #2a2a3a;
+    border-radius: 10px;
+    background: #0a0a0f;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-sizing: border-box;
+  }
+  .script-files-box:hover { border-color: #7c3aed; }
+  .script-files-box.has-items { cursor: default; }
+  .script-files-box.empty { align-items: center; justify-content: center; text-align: center; min-height: 104px; }
+  .script-files-box-placeholder { pointer-events: none; color: #777; font-size: 13px; line-height: 1.6; }
+  .script-files-box-ptitle { color: #888; font-weight: 500; }
+  .script-files-box-psub { color: #555; font-size: 11px; margin-top: 4px; }
+  .script-files-box-hint {
+    align-self: flex-start;
+    font-size: 12px;
+    color: #888;
+    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px dashed #2a2a3a;
+    transition: color .15s, border-color .15s;
+  }
+  .script-files-box-hint:hover { color: #a78bfa; border-color: #7c3aed; }
+  .script-files-box.script-composer--drag { border-color: #7c3aed; background: rgba(124, 58, 237, .06); }
+  .script-files-box .script-composer-drop-overlay { border-radius: 10px; }
+
+  .script-source-textarea {
+    width: 100%;
+    min-height: 96px;
+    background: #0a0a0f;
+    border: 1px solid #2a2a3a;
+    border-radius: 10px;
+    color: #e0e0e0;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    padding: 12px 14px;
+    resize: vertical;
+    box-sizing: border-box;
+    transition: border-color .15s;
+  }
+  .script-source-textarea:focus { border-color: #7c3aed; }
+  .script-source-textarea::placeholder { color: #666; }
+
+  .wf-config-body .script-files-box { background: #0e0e16; }
+  .wf-config-body .script-source-textarea { background: #0e0e16; }
 
   /* Radio button group (reusable) */
   .radio-btns { display: flex; gap: 8px; flex-wrap: wrap; }
