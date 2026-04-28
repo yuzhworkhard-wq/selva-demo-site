@@ -105,6 +105,14 @@ test('assets center can batch sync selected videos without narrowing to a folder
 
   app.call('syncSelectedAssets');
 
+  app.eval(`
+    _syncOptionsDraft.director = users[1].id;
+    _syncOptionsDraft.editor = users[2].id;
+    document.getElementById('sync-opt-director').value = users[1].id;
+    document.getElementById('sync-opt-editor').value = users[2].id;
+    confirmSyncOptions();
+  `);
+
   const result = normalize(app.eval(`
     (() => ({
       syncedFlags: window.__assetTestPicks.map(pick => {

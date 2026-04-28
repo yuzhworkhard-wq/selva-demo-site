@@ -50,6 +50,8 @@ function showModal(type, extra) {
     `;
   } else if (type === 'asset-filters') {
     renderAssetFilterModalBody();
+  } else if (type === 'sync-options') {
+    renderSyncOptionsModalBody();
   } else if (type === 'project') {
     body.innerHTML = `
       <h3>新建项目</h3>

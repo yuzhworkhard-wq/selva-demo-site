@@ -34,6 +34,8 @@ rsync -a --delete \
   --exclude '.DS_Store' \
   --exclude '.worktrees/' \
   --exclude 'worktrees/' \
+  --exclude '.claude/' \
+  --exclude '.superpowers/' \
   "$SOURCE_REPO"/ "$BACKUP_DIR"/
 
 if [[ ! -f "$SITE_DIR/index.html" ]]; then
@@ -43,4 +45,3 @@ fi
 
 echo "Synced runtime files into $SITE_DIR"
 echo "Backed up source files into $BACKUP_DIR"
-

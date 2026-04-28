@@ -2881,6 +2881,182 @@ function selectAllFilteredAssetVideos(event) {
     .map(item => getAssetSelectionKey(item)));
   renderAssetsCenter();
 }
+// ===== Sync Options Modal =====
+const SYNC_AD_ACCOUNTS = [
+  { id: 'ka-001', label: 'Kwai-品牌主账号', media: 'kwai' },
+  { id: 'ka-002', label: 'Kwai-增长投放01', media: 'kwai' },
+  { id: 'ka-003', label: 'Kwai-增长投放02', media: 'kwai' },
+  { id: 'ka-004', label: 'Kwai-海外测试', media: 'kwai' },
+  { id: 'tt-001', label: 'TT-品牌出海', media: 'tt' },
+  { id: 'tt-002', label: 'TT-东南亚增长', media: 'tt' },
+  { id: 'tt-003', label: 'TT-拉美投放', media: 'tt' },
+  { id: 'tt-004', label: 'TT-欧美测试', media: 'tt' },
+];
+let _syncOptionsDraft = { products: [], adAccounts: [], director: '', editor: '' };
+let _syncPendingItems = [];
+let _syncPendingScope = '';
+
+function openSyncOptionsForItems(items, scope) {
+  if (!items.length) return;
+  _syncPendingItems = items;
+  _syncPendingScope = scope || '';
+  const prefilledProducts = [...new Set(items.map(item => item._fileRef && item._fileRef._product || item.projectProduct).filter(Boolean))];
+  _syncOptionsDraft = {
+    products: prefilledProducts,
+    adAccounts: [],
+    director: '',
+    editor: '',
+  };
+  showModal('sync-options');
+}
+
+function getSyncProductOptions() {
+  const products = [...new Set(projects.map(p => p.product).filter(Boolean))].sort();
+  return products.map(p => ({ value: p, label: p }));
+}
+function getSyncAdAccountOptions() {
+  return SYNC_AD_ACCOUNTS.map(a => ({ value: a.id, label: a.label }));
+}
+function getSyncStaffOptions() {
+  return users
+    .filter(u => u.status === 'active' && u.role !== 'superadmin')
+    .map(u => ({ value: u.id, label: u.name }));
+}
+
+function renderSyncOptionsModalBody() {
+  const body = document.getElementById('modal-body');
+  if (!body) return;
+  const productOpts = getSyncProductOptions();
+  const adOpts = getSyncAdAccountOptions();
+  const staffOpts = getSyncStaffOptions();
+  const draft = _syncOptionsDraft;
+
+  const renderMsCombo = (id, key, options, placeholder) => {
+    const selected = draft[key] || [];
+    return `
+      <div class="ms-combo" id="${id}" data-mode="sync" data-key="${key}" data-options='${JSON.stringify(options)}'>
+        <div class="ms-combo-box" onclick="this.querySelector('.ms-combo-input').focus()">
+          ${selected.map(val => {
+            const opt = options.find(o => o.value === val);
+            return opt ? `<span class="ms-combo-tag">${opt.label}<span class="ms-tag-x" onmousedown="event.stopPropagation();msComboRemoveTag('${id}','${val}')">&times;</span></span>` : '';
+          }).join('')}
+          <input class="ms-combo-input" placeholder="${selected.length ? '' : placeholder}"
+            onfocus="msComboFocus('${id}')"
+            onblur="msComboBlur('${id}')"
+            oninput="msComboFilter('${id}', this.value)">
+        </div>
+        <span class="ms-combo-chevron">▾</span>
+        <div class="ms-combo-dropdown">
+          ${options.map(option => `
+            <div class="ms-combo-option ${selected.includes(option.value) ? 'selected' : ''}"
+                 data-value="${option.value}" data-label="${option.label}"
+                 onmousedown="event.preventDefault();msComboToggle('${id}','${option.value}')">
+              <span class="ms-check">${selected.includes(option.value) ? '✓' : ''}</span>
+              ${option.label}
+            </div>
+          `).join('')}
+          <div class="ms-combo-empty" style="display:none;">无匹配项</div>
+        </div>
+      </div>`;
+  };
+
+  const required = '<span style="color:#f43f5e; margin-right:2px;">*</span>';
+  const itemCount = _syncPendingItems.length;
+  const noteText = itemCount > 1
+    ? `将为 ${itemCount} 个视频素材应用以下同步选项`
+    : '将为该视频素材应用以下同步选项';
+
+  body.innerHTML = `
+    <h3>同步素材</h3>
+    <div class="task-filter-modal-note">${noteText}</div>
+    <div style="display:flex; flex-direction:column; gap:14px; margin-top:12px;">
+      <div>
+        <label style="display:block; margin-bottom:6px;">${required}产品</label>
+        ${renderMsCombo('sync-opt-product', 'products', productOpts, '请选择')}
+      </div>
+      <div>
+        <label style="display:block; margin-bottom:6px;">广告账户</label>
+        ${renderMsCombo('sync-opt-ad', 'adAccounts', adOpts, '不选则默认全部广告账户')}
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div>
+          <label style="display:block; margin-bottom:6px;">${required}编导</label>
+          <select id="sync-opt-director" onchange="_syncOptionsDraft.director=this.value;"
+            style="width:100%; background:#0a0a0f; border:1px solid #2a2a3a; border-radius:8px; padding:10px 12px; color:#e0e0e0; font-size:13px; outline:none;">
+            <option value="">请选择</option>
+            ${staffOpts.map(o => `<option value="${o.value}" ${draft.director === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:6px;">${required}剪辑</label>
+          <select id="sync-opt-editor" onchange="_syncOptionsDraft.editor=this.value;"
+            style="width:100%; background:#0a0a0f; border:1px solid #2a2a3a; border-radius:8px; padding:10px 12px; color:#e0e0e0; font-size:13px; outline:none;">
+            <option value="">请选择</option>
+            ${staffOpts.map(o => `<option value="${o.value}" ${draft.editor === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="hideModal()">取消</button>
+      <button class="btn btn-primary" onclick="confirmSyncOptions()">确定</button>
+    </div>
+  `;
+}
+
+function confirmSyncOptions() {
+  const directorSel = document.getElementById('sync-opt-director');
+  const editorSel = document.getElementById('sync-opt-editor');
+  if (directorSel) _syncOptionsDraft.director = directorSel.value || '';
+  if (editorSel) _syncOptionsDraft.editor = editorSel.value || '';
+
+  if (!_syncOptionsDraft.products.length) { toast('请选择产品'); return; }
+  if (!_syncOptionsDraft.director) { toast('请选择编导'); return; }
+  if (!_syncOptionsDraft.editor) { toast('请选择剪辑'); return; }
+
+  const now = new Date();
+  const ts = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  const directorName = (users.find(u => u.id === _syncOptionsDraft.director) || {}).name || '';
+  const editorName = (users.find(u => u.id === _syncOptionsDraft.editor) || {}).name || '';
+  const adLabels = _syncOptionsDraft.adAccounts.length
+    ? SYNC_AD_ACCOUNTS.filter(a => _syncOptionsDraft.adAccounts.includes(a.id)).map(a => a.label)
+    : ['全部广告账户'];
+
+  let newlySynced = 0;
+  _syncPendingItems.forEach(item => {
+    const file = item._fileRef || item;
+    if (!file) return;
+    if (!file.synced) newlySynced++;
+    file.synced = true;
+    file.syncedAt = ts;
+    const proj = projects.find(p => p.id === item.projectId);
+    file.syncedTo = proj ? getProjectSyncTarget(proj) : (file.syncedTo || '');
+    file.syncedProducts = [..._syncOptionsDraft.products];
+    file.syncedAdAccounts = [...adLabels];
+    file.syncedDirector = directorName;
+    file.syncedEditor = editorName;
+  });
+
+  if (_syncPendingScope === 'selected') {
+    currentAssetSelection = new Set();
+  }
+
+  const scope = _syncPendingScope;
+  const total = _syncPendingItems.length;
+  _syncPendingItems = [];
+  _syncPendingScope = '';
+  hideModal();
+  renderAssetsCenter();
+
+  if (scope === 'single') {
+    toast(newlySynced ? '已同步到 ' + adLabels.join('、') : '已更新同步信息');
+  } else if (scope === 'folder') {
+    toast(newlySynced ? `${newlySynced} 个视频已同步` : '所选视频均已同步');
+  } else {
+    toast(newlySynced ? `${newlySynced} 个视频已批量同步` : `已更新 ${total} 个视频的同步信息`);
+  }
+}
+
 function syncSelectedAssets(event) {
   if (event) event.stopPropagation();
   const selectedItems = getAllAssetsData().filter(item =>
@@ -2889,22 +3065,7 @@ function syncSelectedAssets(event) {
     toast('请先勾选要同步的视频素材');
     return;
   }
-  const now = new Date();
-  const ts = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
-  let syncedCount = 0;
-  selectedItems.forEach(item => {
-    if (!item._fileRef.synced) syncedCount++;
-    item._fileRef.synced = true;
-    item._fileRef.syncedAt = ts;
-    item._fileRef.syncedTo = getProjectSyncTarget(projects.find(project => project.id === item.projectId));
-  });
-  currentAssetSelection = new Set();
-  renderAssetsCenter();
-  if (syncedCount > 0) {
-    toast(`${syncedCount} 个视频已批量同步`);
-  } else {
-    toast('选中的视频均已同步');
-  }
+  openSyncOptionsForItems(selectedItems, 'selected');
 }
 
 function goToTaskFromAsset(taskId) {
@@ -2924,13 +3085,12 @@ function syncAsset(projectId, folderId, fileName, event) {
   if (!folder) return;
   const file = folder.files.find(f => f.name === fileName);
   if (!file) return;
-  const now = new Date();
-  const ts = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
-  file.synced = true;
-  file.syncedAt = ts;
-  file.syncedTo = getProjectSyncTarget(proj);
-  renderAssetsCenter();
-  toast(file.synced ? '"' + fileName + '" 已同步到 ' + file.syncedTo : '"' + fileName + '" 同步失败');
+  const item = {
+    _fileRef: file,
+    projectId: proj.id,
+    projectProduct: proj.product || '',
+  };
+  openSyncOptionsForItems([item], 'single');
 }
 
 function syncFolderAssets(projectId, folderId, event) {
@@ -2939,24 +3099,14 @@ function syncFolderAssets(projectId, folderId, event) {
   if (!proj) return;
   const folder = proj.folders.find(f => f.id === folderId);
   if (!folder) return;
-  const now = new Date();
-  const ts = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
-  const target = getProjectSyncTarget(proj);
-  let count = 0;
-  folder.files.forEach(file => {
-    if (getFileType(file) === 'video' && !file.synced) {
-      file.synced = true;
-      file.syncedAt = ts;
-      file.syncedTo = target;
-      count++;
-    }
-  });
-  renderAssetsCenter();
-  if (count > 0) {
-    toast('文件夹「' + folder.name + '」中 ' + count + ' 个视频已批量同步到 ' + target);
-  } else {
+  const items = folder.files
+    .filter(file => getFileType(file) === 'video' && !file.synced)
+    .map(file => ({ _fileRef: file, projectId: proj.id, projectProduct: proj.product || '' }));
+  if (!items.length) {
     toast('文件夹「' + folder.name + '」中所有视频均已同步');
+    return;
   }
+  openSyncOptionsForItems(items, 'folder');
 }
 
 function renderAssetsCenter() {
@@ -3551,7 +3701,9 @@ function toggleTaskFilterTag(el) {
   el.classList.toggle('selected');
 }
 function getMsComboDraftStore(mode) {
-  return mode === 'asset' ? _assetFilterDraft : _taskFilterDraft;
+  if (mode === 'asset') return _assetFilterDraft;
+  if (mode === 'sync') return _syncOptionsDraft;
+  return _taskFilterDraft;
 }
 function msComboToggle(fieldId, value) {
   const container = document.getElementById(fieldId);
@@ -3566,6 +3718,10 @@ function msComboToggle(fieldId, value) {
   if (mode === 'asset') {
     pruneAssetFilterDraftSelections();
     renderAssetFilterModalBody();
+    return;
+  }
+  if (mode === 'sync') {
+    renderSyncOptionsModalBody();
     return;
   }
   msComboRender(fieldId);
@@ -3583,6 +3739,10 @@ function msComboRemoveTag(fieldId, value) {
   if (mode === 'asset') {
     pruneAssetFilterDraftSelections();
     renderAssetFilterModalBody();
+    return;
+  }
+  if (mode === 'sync') {
+    renderSyncOptionsModalBody();
     return;
   }
   msComboRender(fieldId);
