@@ -2969,7 +2969,7 @@ function renderSyncOptionsModalBody() {
   body.innerHTML = `
     <h3>同步素材</h3>
     <div class="task-filter-modal-note">${noteText}</div>
-    <div style="display:flex; flex-direction:column; gap:14px; margin-top:12px;">
+    <div class="sync-options-modal-form" style="display:flex; flex-direction:column; gap:14px; margin-top:12px;">
       <div>
         <label style="display:block; margin-bottom:6px;">${required}产品</label>
         ${renderMsCombo('sync-opt-product', 'products', productOpts, '请选择')}

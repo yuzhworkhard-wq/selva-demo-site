@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 
 const { loadApp } = require('./load-selva-app.test-helper');
 
@@ -129,4 +131,22 @@ test('assets center can batch sync selected videos without narrowing to a folder
 
   assert.deepEqual(result.syncedFlags, [true, true]);
   assert.equal(result.selectionSize, 0);
+});
+
+test('sync options modal lets multiselect dropdowns escape the modal scroll container', () => {
+  const app = loadApp();
+
+  app.eval(`
+    (() => {
+      const item = getAllAssetsData().find(asset => asset.fileType === 'video');
+      openSyncOptionsForItems([item], 'single');
+    })();
+  `);
+
+  const html = app.eval("document.getElementById('modal-body').innerHTML");
+  const css = fs.readFileSync(path.resolve(__dirname, '..', 'styles.css'), 'utf8');
+
+  assert.match(html, /sync-options-modal-form/);
+  assert.match(css, /\.modal:has\(\.sync-options-modal-form\)[^{]*{[^}]*overflow-y:\s*visible/);
+  assert.match(css, /\.modal:has\(\.sync-options-modal-form\)[^{]*{[^}]*max-height:\s*none/);
 });
