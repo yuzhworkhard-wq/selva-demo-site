@@ -2801,10 +2801,11 @@ function applyAssetFilterForm() {
   renderAssetsCenter();
 }
 
-function getProjectSyncTarget(proj) {
+function getProjectSyncTarget(proj, platform) {
   const projectName = (proj && proj.client) || '品牌';
-  if (proj && proj.media === 'tt') return 'TT-' + projectName + '官方号';
-  if (proj && proj.media === 'kwai+tt') return 'Kwai+TT-' + projectName + '官方号';
+  const media = platform || (proj && proj.media);
+  if (media === 'tt') return 'TT-' + projectName + '官方号';
+  if (media === 'kwai+tt') return 'Kwai+TT-' + projectName + '官方号';
   return 'Kwai-' + projectName + '官方号';
 }
 
@@ -2892,7 +2893,22 @@ const SYNC_AD_ACCOUNTS = [
   { id: 'tt-003', label: 'TT-拉美投放', media: 'tt' },
   { id: 'tt-004', label: 'TT-欧美测试', media: 'tt' },
 ];
-let _syncOptionsDraft = { products: [], adAccounts: [], director: '', editor: '' };
+const SYNC_PLATFORM_OPTIONS = [
+  { value: 'tt', label: 'TT' },
+  { value: 'kwai', label: 'Kwai' },
+];
+const SYNC_KWAI_VIDEO_MODES = [
+  { value: 'portrait', label: '竖版' },
+  { value: 'landscape', label: '横版' },
+];
+const SYNC_KWAI_LANGUAGE_OPTIONS = [
+  { value: 'pt-br', label: '巴西葡语' },
+  { value: 'en', label: '英语' },
+  { value: 'es', label: '西班牙语' },
+  { value: 'id', label: '印度尼西亚语' },
+  { value: 'none', label: '无语言' },
+];
+let _syncOptionsDraft = { platform: '', products: [], adAccounts: [], director: '', editor: '', videoMode: 'portrait', videoLanguage: '', audioLanguage: '' };
 let _syncPendingItems = [];
 let _syncPendingScope = '';
 
@@ -2901,11 +2917,20 @@ function openSyncOptionsForItems(items, scope) {
   _syncPendingItems = items;
   _syncPendingScope = scope || '';
   const prefilledProducts = [...new Set(items.map(item => item._fileRef && item._fileRef._product || item.projectProduct).filter(Boolean))];
+  const itemPlatforms = [...new Set(items.map(item => {
+    const proj = projects.find(p => p.id === item.projectId);
+    const media = ((proj && proj.media) || '').toLowerCase();
+    return media === 'tt' || media === 'kwai' ? media : '';
+  }).filter(Boolean))];
   _syncOptionsDraft = {
+    platform: itemPlatforms.length === 1 ? itemPlatforms[0] : '',
     products: prefilledProducts,
     adAccounts: [],
     director: '',
     editor: '',
+    videoMode: 'portrait',
+    videoLanguage: '',
+    audioLanguage: '',
   };
   showModal('sync-options');
 }
@@ -2915,12 +2940,40 @@ function getSyncProductOptions() {
   return products.map(p => ({ value: p, label: p }));
 }
 function getSyncAdAccountOptions() {
-  return SYNC_AD_ACCOUNTS.map(a => ({ value: a.id, label: a.label }));
+  const platform = _syncOptionsDraft.platform;
+  return SYNC_AD_ACCOUNTS
+    .filter(a => !platform || a.media === platform)
+    .map(a => ({ value: a.id, label: a.label }));
 }
 function getSyncStaffOptions() {
   return users
     .filter(u => u.status === 'active' && u.role !== 'superadmin')
     .map(u => ({ value: u.id, label: u.name }));
+}
+function getSyncPlatformLabel(platform) {
+  const option = SYNC_PLATFORM_OPTIONS.find(item => item.value === platform);
+  return option ? option.label : '';
+}
+function getSyncKwaiOptionLabel(options, value) {
+  const option = options.find(item => item.value === value);
+  return option ? option.label : '';
+}
+function setSyncPlatform(platform) {
+  _syncOptionsDraft.platform = platform;
+  _syncOptionsDraft.adAccounts = (_syncOptionsDraft.adAccounts || []).filter(id => {
+    const account = SYNC_AD_ACCOUNTS.find(a => a.id === id);
+    return account && account.media === platform;
+  });
+  if (platform !== 'kwai') {
+    _syncOptionsDraft.videoLanguage = '';
+    _syncOptionsDraft.audioLanguage = '';
+  }
+  if (!_syncOptionsDraft.videoMode) _syncOptionsDraft.videoMode = 'portrait';
+  renderSyncOptionsModalBody();
+}
+function setSyncKwaiVideoMode(mode) {
+  _syncOptionsDraft.videoMode = mode;
+  renderSyncOptionsModalBody();
 }
 
 function renderSyncOptionsModalBody() {
@@ -2965,11 +3018,51 @@ function renderSyncOptionsModalBody() {
   const noteText = itemCount > 1
     ? `将为 ${itemCount} 个视频素材应用以下同步选项`
     : '将为该视频素材应用以下同步选项';
+  const platformHtml = `
+    <div>
+      <label style="display:block; margin-bottom:6px;">${required}同步平台</label>
+      <div class="sync-platform-switch">
+        ${SYNC_PLATFORM_OPTIONS.map(option => `
+          <button type="button" class="sync-platform-option ${draft.platform === option.value ? 'active' : ''}" onclick="setSyncPlatform('${option.value}')">${option.label}</button>
+        `).join('')}
+      </div>
+    </div>`;
+  const kwaiOptionsHtml = draft.platform === 'kwai' ? `
+    <div>
+      <label style="display:block; margin-bottom:6px;">${required}视频模式</label>
+      <div class="sync-video-mode-row">
+        ${SYNC_KWAI_VIDEO_MODES.map(option => `
+          <label class="sync-video-mode-option ${draft.videoMode === option.value ? 'active' : ''}">
+            <input type="radio" name="sync-video-mode" value="${option.value}" ${draft.videoMode === option.value ? 'checked' : ''} onchange="setSyncKwaiVideoMode('${option.value}')">
+            <span>${option.label}</span>
+          </label>
+        `).join('')}
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div>
+        <label style="display:block; margin-bottom:6px;">${required}视频语言</label>
+        <select id="sync-opt-video-language" onchange="_syncOptionsDraft.videoLanguage=this.value;"
+          style="width:100%; background:#0a0a0f; border:1px solid #2a2a3a; border-radius:8px; padding:10px 12px; color:#e0e0e0; font-size:13px; outline:none;">
+          <option value="">请选择视频语言</option>
+          ${SYNC_KWAI_LANGUAGE_OPTIONS.map(o => `<option value="${o.value}" ${draft.videoLanguage === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="display:block; margin-bottom:6px;">${required}音频语言</label>
+        <select id="sync-opt-audio-language" onchange="_syncOptionsDraft.audioLanguage=this.value;"
+          style="width:100%; background:#0a0a0f; border:1px solid #2a2a3a; border-radius:8px; padding:10px 12px; color:#e0e0e0; font-size:13px; outline:none;">
+          <option value="">请选择音频语言</option>
+          ${SYNC_KWAI_LANGUAGE_OPTIONS.map(o => `<option value="${o.value}" ${draft.audioLanguage === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+        </select>
+      </div>
+    </div>` : '';
 
   body.innerHTML = `
     <h3>同步素材</h3>
     <div class="task-filter-modal-note">${noteText}</div>
     <div class="sync-options-modal-form" style="display:flex; flex-direction:column; gap:14px; margin-top:12px;">
+      ${platformHtml}
       <div>
         <label style="display:block; margin-bottom:6px;">${required}产品</label>
         ${renderMsCombo('sync-opt-product', 'products', productOpts, '请选择')}
@@ -2978,6 +3071,7 @@ function renderSyncOptionsModalBody() {
         <label style="display:block; margin-bottom:6px;">广告账户</label>
         ${renderMsCombo('sync-opt-ad', 'adAccounts', adOpts, '不选则默认全部广告账户')}
       </div>
+      ${kwaiOptionsHtml}
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div>
           <label style="display:block; margin-bottom:6px;">${required}编导</label>
@@ -3007,10 +3101,20 @@ function renderSyncOptionsModalBody() {
 function confirmSyncOptions() {
   const directorSel = document.getElementById('sync-opt-director');
   const editorSel = document.getElementById('sync-opt-editor');
+  const videoLanguageSel = document.getElementById('sync-opt-video-language');
+  const audioLanguageSel = document.getElementById('sync-opt-audio-language');
   if (directorSel) _syncOptionsDraft.director = directorSel.value || '';
   if (editorSel) _syncOptionsDraft.editor = editorSel.value || '';
+  if (videoLanguageSel) _syncOptionsDraft.videoLanguage = videoLanguageSel.value || '';
+  if (audioLanguageSel) _syncOptionsDraft.audioLanguage = audioLanguageSel.value || '';
 
+  if (!_syncOptionsDraft.platform) { toast('请选择同步平台'); return; }
   if (!_syncOptionsDraft.products.length) { toast('请选择产品'); return; }
+  if (_syncOptionsDraft.platform === 'kwai') {
+    if (!_syncOptionsDraft.videoMode) { toast('请选择视频模式'); return; }
+    if (!_syncOptionsDraft.videoLanguage) { toast('请选择视频语言'); return; }
+    if (!_syncOptionsDraft.audioLanguage) { toast('请选择音频语言'); return; }
+  }
   if (!_syncOptionsDraft.director) { toast('请选择编导'); return; }
   if (!_syncOptionsDraft.editor) { toast('请选择剪辑'); return; }
 
@@ -3018,9 +3122,13 @@ function confirmSyncOptions() {
   const ts = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
   const directorName = (users.find(u => u.id === _syncOptionsDraft.director) || {}).name || '';
   const editorName = (users.find(u => u.id === _syncOptionsDraft.editor) || {}).name || '';
+  const platformLabel = getSyncPlatformLabel(_syncOptionsDraft.platform);
+  const videoModeLabel = getSyncKwaiOptionLabel(SYNC_KWAI_VIDEO_MODES, _syncOptionsDraft.videoMode);
+  const videoLanguageLabel = getSyncKwaiOptionLabel(SYNC_KWAI_LANGUAGE_OPTIONS, _syncOptionsDraft.videoLanguage);
+  const audioLanguageLabel = getSyncKwaiOptionLabel(SYNC_KWAI_LANGUAGE_OPTIONS, _syncOptionsDraft.audioLanguage);
   const adLabels = _syncOptionsDraft.adAccounts.length
     ? SYNC_AD_ACCOUNTS.filter(a => _syncOptionsDraft.adAccounts.includes(a.id)).map(a => a.label)
-    : ['全部广告账户'];
+    : [`全部${platformLabel || ''}广告账户`];
 
   let newlySynced = 0;
   _syncPendingItems.forEach(item => {
@@ -3030,11 +3138,21 @@ function confirmSyncOptions() {
     file.synced = true;
     file.syncedAt = ts;
     const proj = projects.find(p => p.id === item.projectId);
-    file.syncedTo = proj ? getProjectSyncTarget(proj) : (file.syncedTo || '');
+    file.syncedTo = proj ? getProjectSyncTarget(proj, _syncOptionsDraft.platform) : (file.syncedTo || '');
+    file.syncedPlatform = platformLabel;
     file.syncedProducts = [..._syncOptionsDraft.products];
     file.syncedAdAccounts = [...adLabels];
     file.syncedDirector = directorName;
     file.syncedEditor = editorName;
+    if (_syncOptionsDraft.platform === 'kwai') {
+      file.syncedVideoMode = videoModeLabel;
+      file.syncedVideoLanguage = videoLanguageLabel;
+      file.syncedAudioLanguage = audioLanguageLabel;
+    } else {
+      file.syncedVideoMode = '';
+      file.syncedVideoLanguage = '';
+      file.syncedAudioLanguage = '';
+    }
   });
 
   if (_syncPendingScope === 'selected') {
@@ -3089,6 +3207,7 @@ function syncAsset(projectId, folderId, fileName, event) {
     _fileRef: file,
     projectId: proj.id,
     projectProduct: proj.product || '',
+    projectMedia: proj.media || '',
   };
   openSyncOptionsForItems([item], 'single');
 }
@@ -3101,7 +3220,7 @@ function syncFolderAssets(projectId, folderId, event) {
   if (!folder) return;
   const items = folder.files
     .filter(file => getFileType(file) === 'video' && !file.synced)
-    .map(file => ({ _fileRef: file, projectId: proj.id, projectProduct: proj.product || '' }));
+    .map(file => ({ _fileRef: file, projectId: proj.id, projectProduct: proj.product || '', projectMedia: proj.media || '' }));
   if (!items.length) {
     toast('文件夹「' + folder.name + '」中所有视频均已同步');
     return;
@@ -3221,6 +3340,14 @@ function renderAssetsCenter() {
         const isPrivate = item.folderVisibility === 'private';
         const syncedAt = item._fileRef.syncedAt || '';
         const syncedTo = item._fileRef.syncedTo || '';
+        const syncDetails = [
+          '同步时间：' + syncedAt,
+          '同步账号：' + syncedTo,
+          item._fileRef.syncedPlatform ? '同步平台：' + item._fileRef.syncedPlatform : '',
+          item._fileRef.syncedVideoMode ? '视频模式：' + item._fileRef.syncedVideoMode : '',
+          item._fileRef.syncedVideoLanguage ? '视频语言：' + item._fileRef.syncedVideoLanguage : '',
+          item._fileRef.syncedAudioLanguage ? '音频语言：' + item._fileRef.syncedAudioLanguage : '',
+        ].filter(Boolean).join('<br>');
         const thumbHue = item._fileRef.thumbHue != null ? item._fileRef.thumbHue : 240;
         const duration = item._fileRef.duration || '';
         const previewText = item._fileRef.preview || '';
@@ -3246,7 +3373,7 @@ function renderAssetsCenter() {
               + '<span>选中</span>'
             + '</label>'
             + (isSynced
-              ? '<span style="font-size:12px; color:#4ade80; cursor:default; position:relative; white-space:nowrap;" onmouseenter="this.querySelector(\'.sync-tooltip\').style.display=\'block\'" onmouseleave="this.querySelector(\'.sync-tooltip\').style.display=\'none\'">◉ 已同步<span class="sync-tooltip" style="display:none; position:absolute; bottom:calc(100% + 8px); right:0; background:#1e1e2e; border:1px solid #2a2a3a; border-radius:8px; padding:10px 14px; font-size:11px; color:#ccc; white-space:nowrap; z-index:50; box-shadow:0 4px 16px #0008; line-height:1.8; text-align:left; min-width:180px;">同步时间：' + syncedAt + '<br>同步账号：' + syncedTo + '</span></span>'
+              ? '<span style="font-size:12px; color:#4ade80; cursor:default; position:relative; white-space:nowrap;" onmouseenter="this.querySelector(\'.sync-tooltip\').style.display=\'block\'" onmouseleave="this.querySelector(\'.sync-tooltip\').style.display=\'none\'">◉ 已同步<span class="sync-tooltip" style="display:none; position:absolute; bottom:calc(100% + 8px); right:0; background:#1e1e2e; border:1px solid #2a2a3a; border-radius:8px; padding:10px 14px; font-size:11px; color:#ccc; white-space:nowrap; z-index:50; box-shadow:0 4px 16px #0008; line-height:1.8; text-align:left; min-width:180px;">' + syncDetails + '</span></span>'
                 + '<span style="font-size:12px; color:#a78bfa; cursor:pointer; white-space:nowrap;" onclick="syncAsset(' + item.projectId + ', ' + item.folderId + ', \'' + escapedName + '\', event)">↗ 同步素材</span>'
               : '<span style="font-size:12px; color:#888; white-space:nowrap;">◎ 未同步</span>'
                 + '<span style="font-size:12px; color:#a78bfa; cursor:pointer; white-space:nowrap;" onclick="syncAsset(' + item.projectId + ', ' + item.folderId + ', \'' + escapedName + '\', event)">↗ 同步素材</span>'

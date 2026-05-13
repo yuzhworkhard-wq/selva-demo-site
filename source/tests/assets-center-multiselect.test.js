@@ -108,10 +108,15 @@ test('assets center can batch sync selected videos without narrowing to a folder
   app.call('syncSelectedAssets');
 
   app.eval(`
+    setSyncPlatform('kwai');
     _syncOptionsDraft.director = users[1].id;
     _syncOptionsDraft.editor = users[2].id;
+    _syncOptionsDraft.videoLanguage = 'pt-br';
+    _syncOptionsDraft.audioLanguage = 'en';
     document.getElementById('sync-opt-director').value = users[1].id;
     document.getElementById('sync-opt-editor').value = users[2].id;
+    document.getElementById('sync-opt-video-language').value = 'pt-br';
+    document.getElementById('sync-opt-audio-language').value = 'en';
     confirmSyncOptions();
   `);
 
