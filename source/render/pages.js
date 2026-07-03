@@ -2372,19 +2372,17 @@ function buildStatsTrend({ tasks, videos }, { showSuccess = canViewSuccessRate()
   const videoData = dayKeys.map(k => videos.filter(v => (v.createdAt||'').slice(0,10) === k).length);
   const maxV = Math.max(1, ...taskData, ...videoData) * 1.2;
 
-  // 成功率折线（管理视角）：与柱状图同轴按天对齐，右侧 0-100% 刻度
+  // 成功率折线（管理视角）：近 7 日滚动口径，与柱状图同轴按天对齐，右侧 0-100% 刻度。
+  // 一条连续折线（无生成的空档天跨接，不断线不留孤点），数据点只标在当天有生成的日子。
   const showRate = showSuccess && f.trendRate;
   const rateData = showRate ? computeDailySuccessSeries(videos, dayKeys) : [];
   let rateOverlay = '';
   if (showRate) {
-    const segs = [];
-    let seg = [];
+    const pts = [];
     rateData.forEach((r, i) => {
-      if (r) seg.push(((i + 0.5) / days * 100).toFixed(2) + ',' + (170 - r.rate * 1.7).toFixed(1));
-      else { if (seg.length > 1) segs.push(seg); seg = []; }
+      if (r) pts.push(((i + 0.5) / days * 100).toFixed(2) + ',' + (170 - r.rate * 1.7).toFixed(1));
     });
-    if (seg.length > 1) segs.push(seg);
-    const lines = segs.map(s => `<polyline class="trend-rate-line" points="${s.join(' ')}" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" opacity="0.9"/>`).join('');
+    const lines = pts.length > 1 ? `<polyline class="trend-rate-line" points="${pts.join(' ')}" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" opacity="0.9"/>` : '';
     const tick = (top, label) => `<div style="position:absolute; right:2px; top:${top}px; font-size:9px; color:#55556a; line-height:1;">${label}</div>`;
     rateOverlay = `
         <svg style="position:absolute; left:0; top:10px; width:100%; height:170px; pointer-events:none; z-index:1;" viewBox="0 0 100 170" preserveAspectRatio="none">
@@ -2410,7 +2408,7 @@ function buildStatsTrend({ tasks, videos }, { showSuccess = canViewSuccessRate()
           ${showSuccess ? `
           <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" onclick="toggleStatsFlag('trendRate')">
             <span style="width:10px; height:10px; border-radius:50%; border:2px solid ${f.trendRate?'#fbbf24':'#444'}; box-sizing:border-box; display:inline-block;"></span>
-            <span style="color:${f.trendRate?'#fde68a':'#666'};">成功率</span>
+            <span style="color:${f.trendRate?'#fde68a':'#666'};">成功率·近7日</span>
           </label>` : ''}
         </div>
       </div>
@@ -2425,7 +2423,7 @@ function buildStatsTrend({ tasks, videos }, { showSuccess = canViewSuccessRate()
               <div style="position:relative; display:flex; gap:2px; align-items:flex-end; height:170px; width:100%;">
                 ${f.trendTask?`<div style="flex:1; background:linear-gradient(to top, #6d28d9, #a78bfa); border-radius:2px 2px 0 0; height:${tH.toFixed(1)}px;" title="${lbl} · 任务 ${taskData[i]}"></div>`:''}
                 ${f.trendVideo?`<div style="flex:1; background:linear-gradient(to top, #0891b2, #22d3ee); border-radius:2px 2px 0 0; height:${vH.toFixed(1)}px;" title="${lbl} · 视频 ${videoData[i]}"></div>`:''}
-                ${r?`<div class="trend-rate-dot" title="${lbl} · 成功率 ${r.rate}%（生成 ${r.generated} → 采用 ${r.adopted}）" style="position:absolute; left:50%; bottom:${r.rate}%; transform:translate(-50%,50%); width:7px; height:7px; border-radius:50%; background:#0b0b12; border:2px solid #fbbf24; box-sizing:border-box; z-index:2;"></div>`:''}
+                ${r && r.generated ? `<div class="trend-rate-dot" title="${lbl} · 近7日成功率 ${r.rate}%（近7日 ${r.windowGenerated} 生成 → ${r.windowAdopted} 采用 · 当日 ${r.generated} 生成 ${r.adopted} 采用）" style="position:absolute; left:50%; bottom:${r.rate}%; transform:translate(-50%,50%); width:7px; height:7px; border-radius:50%; background:#0b0b12; border:2px solid #fbbf24; box-sizing:border-box; z-index:2;"></div>` : ''}
               </div>
               <div style="font-size:9px; color:#666; white-space:nowrap;">${lbl}</div>
             </div>`;
@@ -2564,11 +2562,37 @@ function successRateColor(rate, generated) {
   if (rate >= 45) return '#fbbf24';
   return '#f87171';
 }
-// 按趋势图的 dayKeys 逐天归集成功率；当天无生成记录返回 null（折线断开，不画 0）
-function computeDailySuccessSeries(videos, dayKeys) {
+// 按趋势图 dayKeys 逐天计算「近 windowDays 日滚动成功率」。
+// demo 数据每天仅 1-6 条视频，单日比率只会在 0%/100% 之间跳，构不成趋势；
+// 滚动窗口（默认近 7 日累计采用÷累计生成）才是可读的走势线。
+// rate/windowGenerated/windowAdopted = 滚动口径；generated/adopted = 当天原始数（供数据点与悬浮明细）；
+// 窗口内完全无生成返回 null。
+function computeDailySuccessSeries(videos, dayKeys, windowDays = 7) {
+  const byDay = new Map();
+  (videos || []).forEach(v => {
+    const day = (v.createdAt || '').slice(0, 10);
+    if (!day) return;
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day).push(v);
+  });
+  const pad = n => String(n).padStart(2, '0');
   return dayKeys.map(k => {
-    const list = (videos || []).filter(v => (v.createdAt || '').slice(0, 10) === k);
-    return list.length ? computeStatsSuccess(list) : null;
+    const windowVideos = [];
+    const d = new Date(k + 'T12:00:00'); // 正午基准，避开时区/夏令时的日期边界
+    for (let i = 0; i < windowDays; i++) {
+      const key = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+      const list = byDay.get(key);
+      if (list) windowVideos.push.apply(windowVideos, list);
+      d.setDate(d.getDate() - 1);
+    }
+    if (!windowVideos.length) return null;
+    const win = computeStatsSuccess(windowVideos);
+    const today = computeStatsSuccess(byDay.get(k) || []);
+    return {
+      generated: today.generated, adopted: today.adopted,
+      windowGenerated: win.generated, windowAdopted: win.adopted,
+      rate: win.rate,
+    };
   });
 }
 function getLeaderMembers() {
