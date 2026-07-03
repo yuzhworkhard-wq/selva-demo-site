@@ -55,69 +55,53 @@ test('canViewSuccessRate: 仅超管与经理可见，组长与成员不可见', 
   assert.equal(matrix.member, false);
 });
 
-test('computeDailySuccessSeries: rate=近7日滚动成功率，当日生成/采用单独给出，窗口内无生成为 null', () => {
+test('computeDailySuccessSeries: 每个点=当天成功率，无生成的天为 null，各天生成之和=总数', () => {
   const app = loadApp();
   const res = app.eval(`(function(){
-    // 4/1 生成 2，4/3 生成 1；散列采用与否未知，改用窗口累计做恒等校验
     var videos = [
       { taskId:'T1', name:'a.mp4', createdAt:'2026-04-01 10:00' },
       { taskId:'T1', name:'b.mp4', createdAt:'2026-04-01 11:00' },
       { taskId:'T2', name:'c.mp4', createdAt:'2026-04-03 09:00' }
     ];
-    var days = ['2026-03-30','2026-03-31','2026-04-01','2026-04-02','2026-04-03'];
-    var series = computeDailySuccessSeries(videos, days, 7);
-    var all = computeStatsSuccess(videos);
+    var series = computeDailySuccessSeries(videos, ['2026-04-01','2026-04-02','2026-04-03']);
     var d1 = computeStatsSuccess(videos.slice(0, 2));
+    var d3 = computeStatsSuccess(videos.slice(2));
     return {
-      preIsNull: series[0] === null && series[1] === null,          // 4/1 之前窗口内无生成
-      d3dayGenerated: series[2].generated,                          // 当日口径保留
-      d3rate: series[2].rate, d1rate: d1.rate,                      // 4/1 滚动 = 4/1 当日（窗口内仅这天）
-      d4rate: series[3].rate,                                       // 4/2 无生成但窗口盖住 4/1 → 有值（线连续）
-      d4dayGenerated: series[3].generated,
-      d5rate: series[4].rate, allRate: all.rate,                    // 4/3 滚动 = 全部 3 条累计
-      d5winGenerated: series[4].windowGenerated,
+      d1generated: series[0].generated, d1rate: series[0].rate, d1expected: d1.rate,
+      d2isNull: series[1] === null,
+      d3generated: series[2].generated, d3rate: series[2].rate, d3expected: d3.rate,
+      sum: series.reduce(function(s, r){ return s + (r ? r.generated : 0); }, 0),
     };
   })()`);
-  assert.equal(res.preIsNull, true);
-  assert.equal(res.d3dayGenerated, 2);
-  assert.equal(res.d3rate, res.d1rate);
-  assert.equal(res.d4rate, res.d3rate); // 窗口没变（4/2 无新增）
-  assert.equal(res.d4dayGenerated, 0);
-  assert.equal(res.d5rate, res.allRate);
-  assert.equal(res.d5winGenerated, 3);
+  assert.equal(res.d1generated, 2);
+  assert.equal(res.d1rate, res.d1expected);
+  assert.equal(res.d2isNull, true);
+  assert.equal(res.d3generated, 1);
+  assert.equal(res.d3rate, res.d3expected);
+  assert.equal(res.sum, 3);
 });
 
-test('computeDailySuccessSeries: 滚动窗口滑出旧数据（窗口 2 天时第 3 天不再包含第 1 天）', () => {
+test('口径一致：趋势折线各天生成之和 = 概览生成数（超管团队·全部范围）', () => {
   const app = loadApp();
+  app.eval("statsTab='team'; statsFilter.scope='all'; statsFilter.industry='all'; statsFilter.client='all'; statsFilter.product='all'; statsFilter.quick='all'; statsFilter.dateFrom=''; statsFilter.dateTo='';");
   const res = app.eval(`(function(){
-    var early = [
-      { taskId:'T1', name:'a.mp4', createdAt:'2026-04-01 10:00' },
-      { taskId:'T1', name:'b.mp4', createdAt:'2026-04-01 11:00' }
-    ];
-    var late = [{ taskId:'T2', name:'c.mp4', createdAt:'2026-04-03 09:00' }];
-    var series = computeDailySuccessSeries(early.concat(late), ['2026-04-01','2026-04-02','2026-04-03'], 2);
-    var lateOnly = computeStatsSuccess(late);
-    return { d3rate: series[2].rate, lateRate: lateOnly.rate, d3win: series[2].windowGenerated };
-  })()`);
-  assert.equal(res.d3win, 1);
-  assert.equal(res.d3rate, res.lateRate);
-});
-
-test('口径一致：滚动窗口开满时最后一天的窗口累计 = 概览（构造 7 日内数据验证）', () => {
-  const app = loadApp();
-  const res = app.eval(`(function(){
-    var videos = [];
-    for (var i = 0; i < 12; i++) {
-      var day = i % 6 + 1; // 4/1-4/6 各 2 条，全部落在 7 日窗口内
-      videos.push({ taskId: 'T' + i, name: i + '.mp4', createdAt: '2026-04-0' + day + ' 10:00' });
-    }
-    var series = computeDailySuccessSeries(videos, ['2026-04-06'], 7);
+    var memberIds = new Set(getStatsTeamMemberList().map(function(u){ return u.id; }));
+    var tasks = filterStatsTasks(filterTasksForMembers(MOCK_TASKS, memberIds));
+    var videos = filterProducedVideos(collectProducedVideos(tasks));
+    var days = [];
+    videos.forEach(function(v){
+      var d = (v.createdAt || '').slice(0, 10);
+      if (days.indexOf(d) === -1) days.push(d);
+    });
+    var series = computeDailySuccessSeries(videos, days);
+    var sumGen = 0, sumAdopt = 0;
+    series.forEach(function(r){ if (r) { sumGen += r.generated; sumAdopt += r.adopted; } });
     var all = computeStatsSuccess(videos);
-    return { winGen: series[0].windowGenerated, winAdopt: series[0].windowAdopted, rate: series[0].rate, allGen: all.generated, allAdopt: all.adopted, allRate: all.rate };
+    return { totalGen: all.generated, totalAdopt: all.adopted, sumGen: sumGen, sumAdopt: sumAdopt };
   })()`);
-  assert.equal(res.winGen, res.allGen);
-  assert.equal(res.winAdopt, res.allAdopt);
-  assert.equal(res.rate, res.allRate);
+  assert.ok(res.totalGen > 0, '演示数据应有已生成视频');
+  assert.equal(res.sumGen, res.totalGen);
+  assert.equal(res.sumAdopt, res.totalAdopt);
 });
 
 test('buildStatsOverview: 超管/经理见成功率卡；showSuccess:false、组长、成员视角无', () => {
@@ -133,7 +117,7 @@ test('buildStatsOverview: 超管/经理见成功率卡；showSuccess:false、组
   assert.doesNotMatch(app.eval(`buildStatsOverview(${mk})`), /素材成功率/);
 });
 
-test('buildStatsTrend: 管理视角有成功率图例+数据点+折线；空档天跨接不断线；开关可关；个人视角与组长无', () => {
+test('buildStatsTrend: 管理视角有成功率图例+数据点+数值标签+折线；空档天跨接不断线；开关可关；个人视角与组长无', () => {
   const app = loadApp();
   // 两个生成日中间隔着空档天（落在默认 30 天窗口 3/16-4/14 内）：线应跨接成一条，点只落在生成日
   const dataExpr = `({ tasks: [], videos: [
@@ -142,8 +126,10 @@ test('buildStatsTrend: 管理视角有成功率图例+数据点+折线；空档�
   ] })`;
   const su = app.eval(`buildStatsTrend(${dataExpr})`);
   assert.match(su, /成功率/);
+  assert.doesNotMatch(su, /近7日/, '不再使用滚动窗口口径');
   assert.match(su, /trend-rate-dot/);
   assert.match(su, /trend-rate-line/);
+  assert.match(su, /trend-rate-label/, '点上有直接可读的百分比数字');
   assert.equal((su.match(/trend-rate-dot/g) || []).length, 2, '点只标在有生成的两天');
   assert.equal((su.match(/trend-rate-line/g) || []).length, 1, '跨空档连成一条线，不碎段');
 

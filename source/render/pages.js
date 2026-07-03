@@ -2372,8 +2372,8 @@ function buildStatsTrend({ tasks, videos }, { showSuccess = canViewSuccessRate()
   const videoData = dayKeys.map(k => videos.filter(v => (v.createdAt||'').slice(0,10) === k).length);
   const maxV = Math.max(1, ...taskData, ...videoData) * 1.2;
 
-  // 成功率折线（管理视角）：近 7 日滚动口径，与柱状图同轴按天对齐，右侧 0-100% 刻度。
-  // 一条连续折线（无生成的空档天跨接，不断线不留孤点），数据点只标在当天有生成的日子。
+  // 成功率折线（管理视角）：每个点 = 当天成功率，与当天柱子一一对应，点上直接标百分比。
+  // 无生成的天不画点，折线跨过空档连到下一个有数据的天（一条连续线，不断线不留孤点）。
   const showRate = showSuccess && f.trendRate;
   const rateData = showRate ? computeDailySuccessSeries(videos, dayKeys) : [];
   let rateOverlay = '';
@@ -2408,7 +2408,7 @@ function buildStatsTrend({ tasks, videos }, { showSuccess = canViewSuccessRate()
           ${showSuccess ? `
           <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" onclick="toggleStatsFlag('trendRate')">
             <span style="width:10px; height:10px; border-radius:50%; border:2px solid ${f.trendRate?'#fbbf24':'#444'}; box-sizing:border-box; display:inline-block;"></span>
-            <span style="color:${f.trendRate?'#fde68a':'#666'};">成功率·近7日</span>
+            <span style="color:${f.trendRate?'#fde68a':'#666'};">成功率</span>
           </label>` : ''}
         </div>
       </div>
@@ -2423,7 +2423,7 @@ function buildStatsTrend({ tasks, videos }, { showSuccess = canViewSuccessRate()
               <div style="position:relative; display:flex; gap:2px; align-items:flex-end; height:170px; width:100%;">
                 ${f.trendTask?`<div style="flex:1; background:linear-gradient(to top, #6d28d9, #a78bfa); border-radius:2px 2px 0 0; height:${tH.toFixed(1)}px;" title="${lbl} · 任务 ${taskData[i]}"></div>`:''}
                 ${f.trendVideo?`<div style="flex:1; background:linear-gradient(to top, #0891b2, #22d3ee); border-radius:2px 2px 0 0; height:${vH.toFixed(1)}px;" title="${lbl} · 视频 ${videoData[i]}"></div>`:''}
-                ${r && r.generated ? `<div class="trend-rate-dot" title="${lbl} · 近7日成功率 ${r.rate}%（近7日 ${r.windowGenerated} 生成 → ${r.windowAdopted} 采用 · 当日 ${r.generated} 生成 ${r.adopted} 采用）" style="position:absolute; left:50%; bottom:${r.rate}%; transform:translate(-50%,50%); width:7px; height:7px; border-radius:50%; background:#0b0b12; border:2px solid #fbbf24; box-sizing:border-box; z-index:2;"></div>` : ''}
+                ${r ? `<div class="trend-rate-dot" title="${lbl} · 成功率 ${r.rate}%（生成 ${r.generated} → 采用 ${r.adopted}）" style="position:absolute; left:50%; bottom:${r.rate}%; transform:translate(-50%,50%); width:7px; height:7px; border-radius:50%; background:#0b0b12; border:2px solid #fbbf24; box-sizing:border-box; z-index:2;"></div><div class="trend-rate-label" style="position:absolute; left:50%; bottom:calc(${r.rate}% + 8px); transform:translateX(-50%); font-size:9px; font-weight:600; color:#fbbf24; white-space:nowrap; z-index:2; pointer-events:none;">${r.rate}%</div>` : ''}
               </div>
               <div style="font-size:9px; color:#666; white-space:nowrap;">${lbl}</div>
             </div>`;
@@ -2562,37 +2562,12 @@ function successRateColor(rate, generated) {
   if (rate >= 45) return '#fbbf24';
   return '#f87171';
 }
-// 按趋势图 dayKeys 逐天计算「近 windowDays 日滚动成功率」。
-// demo 数据每天仅 1-6 条视频，单日比率只会在 0%/100% 之间跳，构不成趋势；
-// 滚动窗口（默认近 7 日累计采用÷累计生成）才是可读的走势线。
-// rate/windowGenerated/windowAdopted = 滚动口径；generated/adopted = 当天原始数（供数据点与悬浮明细）；
-// 窗口内完全无生成返回 null。
-function computeDailySuccessSeries(videos, dayKeys, windowDays = 7) {
-  const byDay = new Map();
-  (videos || []).forEach(v => {
-    const day = (v.createdAt || '').slice(0, 10);
-    if (!day) return;
-    if (!byDay.has(day)) byDay.set(day, []);
-    byDay.get(day).push(v);
-  });
-  const pad = n => String(n).padStart(2, '0');
+// 按趋势图的 dayKeys 逐天归集：每个点 = 当天的成功率（和柱子一一对应，悬浮/标签数字所见即所得）。
+// 无生成的天返回 null——不画点，折线直接跨过去连到下一个有数据的天（不断线、不画 0）。
+function computeDailySuccessSeries(videos, dayKeys) {
   return dayKeys.map(k => {
-    const windowVideos = [];
-    const d = new Date(k + 'T12:00:00'); // 正午基准，避开时区/夏令时的日期边界
-    for (let i = 0; i < windowDays; i++) {
-      const key = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-      const list = byDay.get(key);
-      if (list) windowVideos.push.apply(windowVideos, list);
-      d.setDate(d.getDate() - 1);
-    }
-    if (!windowVideos.length) return null;
-    const win = computeStatsSuccess(windowVideos);
-    const today = computeStatsSuccess(byDay.get(k) || []);
-    return {
-      generated: today.generated, adopted: today.adopted,
-      windowGenerated: win.generated, windowAdopted: win.adopted,
-      rate: win.rate,
-    };
+    const list = (videos || []).filter(v => (v.createdAt || '').slice(0, 10) === k);
+    return list.length ? computeStatsSuccess(list) : null;
   });
 }
 function getLeaderMembers() {
