@@ -2372,31 +2372,47 @@ function buildStatsTrend({ tasks, videos }, { showSuccess = canViewSuccessRate()
   const videoData = dayKeys.map(k => videos.filter(v => (v.createdAt||'').slice(0,10) === k).length);
   const maxV = Math.max(1, ...taskData, ...videoData) * 1.2;
 
-  // 成功率折线（管理视角）：每个点 = 当天成功率，与当天柱子一一对应，点上直接标百分比。
-  // 无生成的天不画点，折线跨过空档连到下一个有数据的天（一条连续线，不断线不留孤点）。
+  // 成功率带（管理视角）：与柱状带上下分离、共用日期轴。
+  // 比率（0-100%）与产量（条数）是两种量纲，拆成两个绘图带互不干扰；
+  // 率带内点与折线锚定同一容器的同一像素刻度，横向三带共用等分列结构（无 gap），天然对齐。
   const showRate = showSuccess && f.trendRate;
   const rateData = showRate ? computeDailySuccessSeries(videos, dayKeys) : [];
-  let rateOverlay = '';
+  const RATE_H = 68, RATE_BASE = 6, RATE_SPAN = 42; // 带高 / 0% 距带底 / 0→100% 量程（顶部余量放数字标签）
+  const rateBottom = rate => RATE_BASE + rate * RATE_SPAN / 100;    // 点：距带底像素
+  const rateY = rate => RATE_H - rateBottom(rate);                  // 线：SVG y（同一刻度）
+  let rateBand = '';
   if (showRate) {
     const pts = [];
     rateData.forEach((r, i) => {
-      if (r) pts.push(((i + 0.5) / days * 100).toFixed(2) + ',' + (170 - r.rate * 1.7).toFixed(1));
+      if (r) pts.push(((i + 0.5) / days * 100).toFixed(2) + ',' + rateY(r.rate).toFixed(1));
     });
-    const lines = pts.length > 1 ? `<polyline class="trend-rate-line" points="${pts.join(' ')}" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" opacity="0.9"/>` : '';
-    const tick = (top, label) => `<div style="position:absolute; right:2px; top:${top}px; font-size:9px; color:#55556a; line-height:1;">${label}</div>`;
-    rateOverlay = `
-        <svg style="position:absolute; left:0; top:10px; width:100%; height:170px; pointer-events:none; z-index:1;" viewBox="0 0 100 170" preserveAspectRatio="none">
-          <line x1="0" y1="85" x2="100" y2="85" stroke="#23233a" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
-          ${lines}
+    const line = pts.length > 1 ? `<polyline class="trend-rate-line" points="${pts.join(' ')}" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` : '';
+    const grid = (rate, dashed) => `<line x1="0" y1="${rateY(rate).toFixed(1)}" x2="100" y2="${rateY(rate).toFixed(1)}" stroke="#232338" ${dashed ? 'stroke-dasharray="3 3" ' : ''}vector-effect="non-scaling-stroke"/>`;
+    const tick = (rate, label) => `<div style="position:absolute; right:-34px; width:30px; top:${(rateY(rate) - 4).toFixed(0)}px; font-size:8px; color:#4e4e63; line-height:1;">${label}</div>`;
+    rateBand = `
+      <div style="position:relative; height:${RATE_H}px;">
+        <svg style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none;" viewBox="0 0 100 ${RATE_H}" preserveAspectRatio="none">
+          ${grid(100)}${grid(50, true)}${grid(0)}
+          ${line}
         </svg>
-        ${tick(6, '100%')}${tick(91, '50%')}${tick(176, '0%')}`;
+        <div style="position:absolute; inset:0; display:flex;">
+          ${labels.map((lbl, i) => {
+            const r = rateData[i];
+            return `<div style="flex:1; position:relative; min-width:0;">${r ? `
+              <div class="trend-rate-dot" title="${lbl} · 成功率 ${r.rate}%（生成 ${r.generated} → 采用 ${r.adopted}）" style="position:absolute; left:50%; bottom:${rateBottom(r.rate).toFixed(1)}px; transform:translate(-50%,50%); width:7px; height:7px; border-radius:50%; background:#16161f; border:1.5px solid #fbbf24; box-sizing:border-box;"></div>
+              <div class="trend-rate-label" style="position:absolute; left:50%; bottom:${(rateBottom(r.rate) + 6).toFixed(1)}px; transform:translateX(-50%); font-size:8px; font-weight:600; color:#fbbf24; font-variant-numeric:tabular-nums; white-space:nowrap; pointer-events:none;">${r.rate}</div>` : ''}</div>`;
+          }).join('')}
+        </div>
+        ${tick(100, '100%')}${tick(50, '50%')}${tick(0, '0%')}
+      </div>
+      <div style="height:1px; background:#1e1e2e; margin:6px 0 10px;"></div>`;
   }
 
   return `
     <div class="chart-card" style="margin-bottom:20px;">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
         <div class="section-title" style="margin:0;">每日生产趋势</div>
-        <div style="display:flex; gap:14px; font-size:12px;">
+        <div style="display:flex; gap:14px; font-size:12px; align-items:center;">
           <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" onclick="toggleStatsFlag('trendTask')">
             <span style="width:10px; height:10px; border-radius:2px; background:${f.trendTask?'#7c3aed':'#444'}; display:inline-block;"></span>
             <span style="color:${f.trendTask?'#c4b5fd':'#666'};">任务</span>
@@ -2406,30 +2422,30 @@ function buildStatsTrend({ tasks, videos }, { showSuccess = canViewSuccessRate()
             <span style="color:${f.trendVideo?'#67e8f9':'#666'};">视频</span>
           </label>
           ${showSuccess ? `
-          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" onclick="toggleStatsFlag('trendRate')">
-            <span style="width:10px; height:10px; border-radius:50%; border:2px solid ${f.trendRate?'#fbbf24':'#444'}; box-sizing:border-box; display:inline-block;"></span>
+          <label style="display:flex; align-items:center; gap:5px; cursor:pointer;" onclick="toggleStatsFlag('trendRate')">
+            <span style="display:inline-flex; align-items:center;">
+              <span style="width:4px; height:1.5px; background:${f.trendRate?'#fbbf24':'#444'};"></span><span style="width:7px; height:7px; border-radius:50%; border:1.5px solid ${f.trendRate?'#fbbf24':'#444'}; box-sizing:border-box;"></span><span style="width:4px; height:1.5px; background:${f.trendRate?'#fbbf24':'#444'};"></span>
+            </span>
             <span style="color:${f.trendRate?'#fde68a':'#666'};">成功率</span>
           </label>` : ''}
         </div>
       </div>
-      <div style="position:relative;">
-        <div style="display:flex; align-items:flex-end; gap:4px; height:200px; padding-top:10px;">
+      <div style="${showRate ? 'padding-right:36px;' : ''}">
+        ${rateBand}
+        <div style="display:flex; align-items:flex-end; height:120px;">
           ${labels.map((lbl,i) => {
-            const tH = taskData[i] ? Math.max(4, taskData[i]/maxV*170) : 0;
-            const vH = videoData[i] ? Math.max(4, videoData[i]/maxV*170) : 0;
-            const r = showRate ? rateData[i] : null;
+            const tH = taskData[i] ? Math.max(4, taskData[i]/maxV*112) : 0;
+            const vH = videoData[i] ? Math.max(4, videoData[i]/maxV*112) : 0;
             return `
-            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; min-width:0;">
-              <div style="position:relative; display:flex; gap:2px; align-items:flex-end; height:170px; width:100%;">
-                ${f.trendTask?`<div style="flex:1; background:linear-gradient(to top, #6d28d9, #a78bfa); border-radius:2px 2px 0 0; height:${tH.toFixed(1)}px;" title="${lbl} · 任务 ${taskData[i]}"></div>`:''}
-                ${f.trendVideo?`<div style="flex:1; background:linear-gradient(to top, #0891b2, #22d3ee); border-radius:2px 2px 0 0; height:${vH.toFixed(1)}px;" title="${lbl} · 视频 ${videoData[i]}"></div>`:''}
-                ${r ? `<div class="trend-rate-dot" title="${lbl} · 成功率 ${r.rate}%（生成 ${r.generated} → 采用 ${r.adopted}）" style="position:absolute; left:50%; bottom:${r.rate}%; transform:translate(-50%,50%); width:7px; height:7px; border-radius:50%; background:#0b0b12; border:2px solid #fbbf24; box-sizing:border-box; z-index:2;"></div><div class="trend-rate-label" style="position:absolute; left:50%; bottom:calc(${r.rate}% + 8px); transform:translateX(-50%); font-size:9px; font-weight:600; color:#fbbf24; white-space:nowrap; z-index:2; pointer-events:none;">${r.rate}%</div>` : ''}
-              </div>
-              <div style="font-size:9px; color:#666; white-space:nowrap;">${lbl}</div>
+            <div style="flex:1; display:flex; gap:2px; align-items:flex-end; height:100%; padding:0 2px; min-width:0;">
+              ${f.trendTask?`<div style="flex:1; background:linear-gradient(to top, #6d28d9, #a78bfa); border-radius:2px 2px 0 0; height:${tH.toFixed(1)}px;" title="${lbl} · 任务 ${taskData[i]}"></div>`:''}
+              ${f.trendVideo?`<div style="flex:1; background:linear-gradient(to top, #0891b2, #22d3ee); border-radius:2px 2px 0 0; height:${vH.toFixed(1)}px;" title="${lbl} · 视频 ${videoData[i]}"></div>`:''}
             </div>`;
           }).join('')}
         </div>
-        ${rateOverlay}
+        <div style="display:flex; margin-top:6px;">
+          ${labels.map(lbl => `<div style="flex:1; min-width:0; text-align:center; font-size:9px; color:#666; white-space:nowrap;">${lbl}</div>`).join('')}
+        </div>
       </div>
     </div>`;
 }
