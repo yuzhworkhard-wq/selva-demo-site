@@ -39,23 +39,103 @@ test('successRateColor: 无生成灰色，阈值分档（≥70 绿 / ≥45 黄 /
   assert.equal(app.call('successRateColor', 20, 10), '#f87171');
 });
 
-test('口径一致：每日明细各天生成之和 = 概览生成数（个人统计·超管·全部范围）', () => {
+test('canViewSuccessRate: 仅超管与经理可见，组长与成员不可见', () => {
   const app = loadApp();
-  app.eval("statsTab='personal'; statsFilter.scope='all'; statsFilter.industry='all'; statsFilter.client='all'; statsFilter.product='all'; statsFilter.quick='all'; statsFilter.dateFrom=''; statsFilter.dateTo='';");
-  const build = `(function(){
-    var ids = getStatsPersonalTaskIds();
-    var tasks = filterStatsTasks(MOCK_TASKS.filter(function(t){ return ids.has(t.id); }));
-    return filterProducedVideos(collectProducedVideos(tasks));
-  })()`;
-  const overview = app.eval(`computeStatsSuccess(${build})`);
-  const daySum = app.eval(`(function(){
-    var vids = ${build};
-    var m = new Map();
-    vids.forEach(function(v){ var d = (v.createdAt||'').slice(0,10); m.set(d, (m.get(d)||0)+1); });
-    var s = 0; m.forEach(function(n){ s += n; }); return s;
+  const matrix = app.eval(`(function(){
+    return {
+      superadmin: canViewSuccessRate(users.find(function(u){ return u.role === 'superadmin'; })),
+      manager: canViewSuccessRate(users.find(function(u){ return u.role === 'manager'; })),
+      leader: canViewSuccessRate(users.find(function(u){ return u.role === 'leader'; })),
+      member: canViewSuccessRate(users.find(function(u){ return u.role === 'member'; })),
+    };
   })()`);
-  assert.ok(overview.generated > 0, '演示数据应有已生成视频');
-  assert.equal(daySum, overview.generated);
+  assert.equal(matrix.superadmin, true);
+  assert.equal(matrix.manager, true);
+  assert.equal(matrix.leader, false);
+  assert.equal(matrix.member, false);
+});
+
+test('computeDailySuccessSeries: 按天归集，无生成的天为 null，各天生成之和=总数', () => {
+  const app = loadApp();
+  const res = app.eval(`(function(){
+    var videos = [
+      { taskId:'T1', name:'a.mp4', createdAt:'2026-04-01 10:00' },
+      { taskId:'T1', name:'b.mp4', createdAt:'2026-04-01 11:00' },
+      { taskId:'T2', name:'c.mp4', createdAt:'2026-04-03 09:00' }
+    ];
+    var series = computeDailySuccessSeries(videos, ['2026-04-01','2026-04-02','2026-04-03']);
+    return {
+      d1: series[0] ? series[0].generated : -1,
+      d2isNull: series[1] === null,
+      d3: series[2] ? series[2].generated : -1,
+      sum: series.reduce(function(s, r){ return s + (r ? r.generated : 0); }, 0),
+    };
+  })()`);
+  assert.equal(res.d1, 2);
+  assert.equal(res.d2isNull, true);
+  assert.equal(res.d3, 1);
+  assert.equal(res.sum, 3);
+});
+
+test('口径一致：趋势折线各天生成之和 = 概览生成数（超管团队·全部范围）', () => {
+  const app = loadApp();
+  app.eval("statsTab='team'; statsFilter.scope='all'; statsFilter.industry='all'; statsFilter.client='all'; statsFilter.product='all'; statsFilter.quick='all'; statsFilter.dateFrom=''; statsFilter.dateTo='';");
+  const res = app.eval(`(function(){
+    var memberIds = new Set(getStatsTeamMemberList().map(function(u){ return u.id; }));
+    var tasks = filterStatsTasks(filterTasksForMembers(MOCK_TASKS, memberIds));
+    var videos = filterProducedVideos(collectProducedVideos(tasks));
+    var days = [];
+    videos.forEach(function(v){
+      var d = (v.createdAt || '').slice(0, 10);
+      if (days.indexOf(d) === -1) days.push(d);
+    });
+    var series = computeDailySuccessSeries(videos, days);
+    var sum = series.reduce(function(s, r){ return s + (r ? r.generated : 0); }, 0);
+    return { total: computeStatsSuccess(videos).generated, sum: sum };
+  })()`);
+  assert.ok(res.total > 0, '演示数据应有已生成视频');
+  assert.equal(res.sum, res.total);
+});
+
+test('buildStatsOverview: 超管/经理见成功率卡；showSuccess:false、组长、成员视角无', () => {
+  const app = loadApp();
+  const mk = "({ tasks: [], videos: [] })";
+  assert.match(app.eval(`buildStatsOverview(${mk})`), /素材成功率/);
+  assert.doesNotMatch(app.eval(`buildStatsOverview(${mk}, { showSuccess: false })`), /素材成功率/);
+  app.setCurrentUserById('u5'); // 经理
+  assert.match(app.eval(`buildStatsOverview(${mk})`), /素材成功率/);
+  app.setCurrentUserById('u2'); // 组长
+  assert.doesNotMatch(app.eval(`buildStatsOverview(${mk})`), /素材成功率/);
+  app.setCurrentUserById('u4'); // 成员
+  assert.doesNotMatch(app.eval(`buildStatsOverview(${mk})`), /素材成功率/);
+});
+
+test('buildStatsTrend: 管理视角有成功率图例+数据点+折线；开关可关；个人视角与组长无', () => {
+  const app = loadApp();
+  // 连续两天有生成（落在默认 30 天窗口 3/16-4/14 内），保证折线段成立
+  const dataExpr = `({ tasks: [], videos: [
+    { taskId:'T1', name:'a.mp4', createdAt:'2026-04-10 10:00' },
+    { taskId:'T1', name:'b.mp4', createdAt:'2026-04-11 11:00' }
+  ] })`;
+  const su = app.eval(`buildStatsTrend(${dataExpr})`);
+  assert.match(su, /成功率/);
+  assert.match(su, /trend-rate-dot/);
+  assert.match(su, /trend-rate-line/);
+
+  app.eval('statsFilter.trendRate = false;');
+  const off = app.eval(`buildStatsTrend(${dataExpr})`);
+  assert.match(off, /成功率/); // 图例仍在，供重新打开
+  assert.doesNotMatch(off, /trend-rate-dot/);
+  app.eval('statsFilter.trendRate = true;');
+
+  const personal = app.eval(`buildStatsTrend(${dataExpr}, { showSuccess: false })`);
+  assert.doesNotMatch(personal, /成功率/);
+  assert.doesNotMatch(personal, /trend-rate-dot/);
+
+  app.setCurrentUserById('u2'); // 组长
+  const ld = app.eval(`buildStatsTrend(${dataExpr})`);
+  assert.doesNotMatch(ld, /成功率/);
+  assert.doesNotMatch(ld, /trend-rate-dot/);
 });
 
 test('computeMemberCounts: 按成员归集 生成/采用/成功率，不再输出任务数', () => {
@@ -76,27 +156,49 @@ test('computeMemberCounts: 按成员归集 生成/采用/成功率，不再输�
   assert.equal(res.hasTaskCount, false);
 });
 
-test('渲染冒烟：每日明细带成功率与空状态；成员概览展示视频数+成功率且无任务数', () => {
+test('buildTeamMemberOverview: 超管见成员成功率；组长视角只见视频数', () => {
   const app = loadApp();
-  const videos = [
-    { taskId: 'T-20260401-101', name: 'a.mp4', createdAt: '2026-04-01 10:00', task: { id: 'T-20260401-101' } },
-    { taskId: 'T-20260401-101', name: 'b.mp4', createdAt: '2026-04-01 11:00', task: { id: 'T-20260401-101' } },
-  ];
-  const daily = app.call('buildStatsSuccessDaily', { videos });
-  assert.match(daily, /素材成功率 · 每日明细/);
-  assert.match(daily, /4\/1/);
-  const empty = app.call('buildStatsSuccessDaily', { videos: [] });
-  assert.match(empty, /该范围内暂无生成记录/);
+  const videosExpr = `[
+    { taskId:'T-20260401-101', name:'a.mp4', createdAt:'2026-04-01 10:00', task:{ id:'T-20260401-101' } },
+    { taskId:'T-20260401-101', name:'b.mp4', createdAt:'2026-04-01 11:00', task:{ id:'T-20260401-101' } }
+  ]`;
+  const su = app.eval(`buildTeamMemberOverview([users.find(function(u){ return u.id === 'u4'; })], ${videosExpr})`);
+  assert.match(su, /成员概览/);
+  assert.match(su, /🎬/);
+  assert.match(su, /素材成功率/);
+  assert.doesNotMatch(su, /任务数/);
 
-  const overview = app.eval(`(function(){
-    var u4 = users.find(function(u){ return u.id === 'u4'; });
-    var videos = [
-      { taskId:'T-20260401-101', name:'a.mp4', createdAt:'2026-04-01 10:00', task:{ id:'T-20260401-101' } },
-      { taskId:'T-20260401-101', name:'b.mp4', createdAt:'2026-04-01 11:00', task:{ id:'T-20260401-101' } }
-    ];
-    return buildTeamMemberOverview([u4], videos);
-  })()`);
-  assert.match(overview, /成员概览/);
-  assert.match(overview, /🎬/);
-  assert.doesNotMatch(overview, /任务数/);
+  app.setCurrentUserById('u2'); // 组长
+  const ld = app.eval(`buildTeamMemberOverview([users.find(function(u){ return u.id === 'u4'; })], ${videosExpr})`);
+  assert.match(ld, /🎬/);
+  assert.doesNotMatch(ld, /素材成功率/);
+});
+
+test('renderStatsPage: 个人统计任何角色都不含成功率；旧的每日明细已移除', () => {
+  const app = loadApp();
+  assert.equal(app.eval('typeof buildStatsSuccessDaily'), 'undefined');
+  app.eval("statsTab = 'personal'; renderStatsPage();");
+  const su = app.eval("document.getElementById('stats-content').innerHTML");
+  assert.match(su, /个人统计/);
+  assert.doesNotMatch(su, /素材成功率/);
+  assert.doesNotMatch(su, /每日明细/);
+
+  app.setCurrentUserById('u4'); // 成员
+  app.eval("statsTab = 'personal'; renderStatsPage();");
+  const mb = app.eval("document.getElementById('stats-content').innerHTML");
+  assert.doesNotMatch(mb, /素材成功率/);
+});
+
+test('renderStatsPage: 团队统计超管含成功率卡与折线；组长团队视图不含', () => {
+  const app = loadApp();
+  app.eval("statsTab = 'team'; renderStatsPage();");
+  const su = app.eval("document.getElementById('stats-content').innerHTML");
+  assert.match(su, /素材成功率/);
+  assert.match(su, /trend-rate-dot/);
+
+  app.setCurrentUserById('u2'); // 组长
+  app.eval("statsTab = 'team'; renderStatsPage();");
+  const ld = app.eval("document.getElementById('stats-content').innerHTML");
+  assert.doesNotMatch(ld, /素材成功率/);
+  assert.doesNotMatch(ld, /trend-rate-dot/);
 });

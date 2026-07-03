@@ -1926,6 +1926,7 @@ let statsFilter = {
   dateTo: '',
   trendTask: true,
   trendVideo: true,
+  trendRate: true,
   distTool: true,
   distWorkflow: true,
   member: 'all',         // leader-level
@@ -2233,9 +2234,9 @@ function renderStatsPage() {
     const myProducedVideos = collectProducedVideos(myTasks);
     const myVideos = filterProducedVideos(myProducedVideos);
     const data = { tasks: myTasks, videos: myVideos };
-    contentHtml = buildStatsOverview(data)
-      + buildStatsSuccessDaily(data)
-      + buildStatsTrend(data)
+    // 个人统计一律不展示成功率（成功率=管理考核指标，只在团队统计里给超管/经理看）
+    contentHtml = buildStatsOverview(data, { showSuccess: false })
+      + buildStatsTrend(data, { showSuccess: false })
       + buildStatsDistribution(data)
       + buildStatsModelDistribution(data);
   } else {
@@ -2300,13 +2301,25 @@ function buildStatsFilterBar() {
     </div>`;
 }
 
-function buildStatsOverview({ tasks, videos }) {
+function buildStatsOverview({ tasks, videos }, { showSuccess = canViewSuccessRate() } = {}) {
   const toolN = tasks.filter(t => t.source === 'toolbox').length;
   const wfN = tasks.filter(t => t.source === 'workflow').length;
-  const succ = computeStatsSuccess(videos);
-  const succColor = successRateColor(succ.rate, succ.generated);
+  let successCard = '';
+  if (showSuccess) {
+    const succ = computeStatsSuccess(videos);
+    const succColor = successRateColor(succ.rate, succ.generated);
+    successCard = `
+      <div class="stat-card" title="当天被本人下载采用条数 ÷ 当天生成成功条数">
+        <div class="label">素材成功率</div>
+        <div class="value" style="color:${succColor};">${succ.generated ? succ.rate + '%' : '—'}</div>
+        <div class="trend" style="color:#888;">${succ.generated} 生成 → ${succ.adopted} 采用 · 下载去重</div>
+        <div style="margin-top:12px; height:6px; background:#0f0f17; border-radius:999px; overflow:hidden;">
+          <div style="height:100%; width:${succ.generated ? succ.rate : 0}%; background:${succColor}; border-radius:999px;"></div>
+        </div>
+      </div>`;
+  }
   return `
-    <div class="stats-row" style="grid-template-columns:repeat(3,1fr); margin-bottom:20px;">
+    <div class="stats-row" style="grid-template-columns:repeat(${showSuccess ? 3 : 2},1fr); margin-bottom:20px;">
       <div class="stat-card">
         <div class="label">总任务数</div>
         <div class="value" style="color:#a78bfa;">${tasks.length}</div>
@@ -2316,19 +2329,11 @@ function buildStatsOverview({ tasks, videos }) {
         <div class="label">生成视频</div>
         <div class="value" style="color:#4ade80;">${videos.length}</div>
         <div class="trend" style="color:#888;">来源：任务中心中的视频文件</div>
-      </div>
-      <div class="stat-card" title="当天被本人下载采用条数 ÷ 当天生成成功条数">
-        <div class="label">素材成功率</div>
-        <div class="value" style="color:${succColor};">${succ.generated ? succ.rate + '%' : '—'}</div>
-        <div class="trend" style="color:#888;">${succ.generated} 生成 → ${succ.adopted} 采用 · 下载去重</div>
-        <div style="margin-top:12px; height:6px; background:#0f0f17; border-radius:999px; overflow:hidden;">
-          <div style="height:100%; width:${succ.generated ? succ.rate : 0}%; background:${succColor}; border-radius:999px;"></div>
-        </div>
-      </div>
+      </div>${successCard}
     </div>`;
 }
 
-function buildStatsTrend({ tasks, videos }) {
+function buildStatsTrend({ tasks, videos }, { showSuccess = canViewSuccessRate() } = {}) {
   const f = statsFilter;
   const base = new Date('2026-04-14T00:00:00');
   const pad = n => String(n).padStart(2,'0');
@@ -2367,6 +2372,28 @@ function buildStatsTrend({ tasks, videos }) {
   const videoData = dayKeys.map(k => videos.filter(v => (v.createdAt||'').slice(0,10) === k).length);
   const maxV = Math.max(1, ...taskData, ...videoData) * 1.2;
 
+  // 成功率折线（管理视角）：与柱状图同轴按天对齐，右侧 0-100% 刻度
+  const showRate = showSuccess && f.trendRate;
+  const rateData = showRate ? computeDailySuccessSeries(videos, dayKeys) : [];
+  let rateOverlay = '';
+  if (showRate) {
+    const segs = [];
+    let seg = [];
+    rateData.forEach((r, i) => {
+      if (r) seg.push(((i + 0.5) / days * 100).toFixed(2) + ',' + (170 - r.rate * 1.7).toFixed(1));
+      else { if (seg.length > 1) segs.push(seg); seg = []; }
+    });
+    if (seg.length > 1) segs.push(seg);
+    const lines = segs.map(s => `<polyline class="trend-rate-line" points="${s.join(' ')}" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" opacity="0.9"/>`).join('');
+    const tick = (top, label) => `<div style="position:absolute; right:2px; top:${top}px; font-size:9px; color:#55556a; line-height:1;">${label}</div>`;
+    rateOverlay = `
+        <svg style="position:absolute; left:0; top:10px; width:100%; height:170px; pointer-events:none; z-index:1;" viewBox="0 0 100 170" preserveAspectRatio="none">
+          <line x1="0" y1="85" x2="100" y2="85" stroke="#23233a" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
+          ${lines}
+        </svg>
+        ${tick(6, '100%')}${tick(91, '50%')}${tick(176, '0%')}`;
+  }
+
   return `
     <div class="chart-card" style="margin-bottom:20px;">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
@@ -2380,21 +2407,31 @@ function buildStatsTrend({ tasks, videos }) {
             <span style="width:10px; height:10px; border-radius:2px; background:${f.trendVideo?'#06b6d4':'#444'}; display:inline-block;"></span>
             <span style="color:${f.trendVideo?'#67e8f9':'#666'};">视频</span>
           </label>
+          ${showSuccess ? `
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" onclick="toggleStatsFlag('trendRate')">
+            <span style="width:10px; height:10px; border-radius:50%; border:2px solid ${f.trendRate?'#fbbf24':'#444'}; box-sizing:border-box; display:inline-block;"></span>
+            <span style="color:${f.trendRate?'#fde68a':'#666'};">成功率</span>
+          </label>` : ''}
         </div>
       </div>
-      <div style="display:flex; align-items:flex-end; gap:4px; height:200px; padding-top:10px;">
-        ${labels.map((lbl,i) => {
-          const tH = taskData[i] ? Math.max(4, taskData[i]/maxV*170) : 0;
-          const vH = videoData[i] ? Math.max(4, videoData[i]/maxV*170) : 0;
-          return `
-          <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; min-width:0;">
-            <div style="display:flex; gap:2px; align-items:flex-end; height:170px; width:100%;">
-              ${f.trendTask?`<div style="flex:1; background:linear-gradient(to top, #6d28d9, #a78bfa); border-radius:2px 2px 0 0; height:${tH.toFixed(1)}px;" title="${lbl} · 任务 ${taskData[i]}"></div>`:''}
-              ${f.trendVideo?`<div style="flex:1; background:linear-gradient(to top, #0891b2, #22d3ee); border-radius:2px 2px 0 0; height:${vH.toFixed(1)}px;" title="${lbl} · 视频 ${videoData[i]}"></div>`:''}
-            </div>
-            <div style="font-size:9px; color:#666; white-space:nowrap;">${lbl}</div>
-          </div>`;
-        }).join('')}
+      <div style="position:relative;">
+        <div style="display:flex; align-items:flex-end; gap:4px; height:200px; padding-top:10px;">
+          ${labels.map((lbl,i) => {
+            const tH = taskData[i] ? Math.max(4, taskData[i]/maxV*170) : 0;
+            const vH = videoData[i] ? Math.max(4, videoData[i]/maxV*170) : 0;
+            const r = showRate ? rateData[i] : null;
+            return `
+            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; min-width:0;">
+              <div style="position:relative; display:flex; gap:2px; align-items:flex-end; height:170px; width:100%;">
+                ${f.trendTask?`<div style="flex:1; background:linear-gradient(to top, #6d28d9, #a78bfa); border-radius:2px 2px 0 0; height:${tH.toFixed(1)}px;" title="${lbl} · 任务 ${taskData[i]}"></div>`:''}
+                ${f.trendVideo?`<div style="flex:1; background:linear-gradient(to top, #0891b2, #22d3ee); border-radius:2px 2px 0 0; height:${vH.toFixed(1)}px;" title="${lbl} · 视频 ${videoData[i]}"></div>`:''}
+                ${r?`<div class="trend-rate-dot" title="${lbl} · 成功率 ${r.rate}%（生成 ${r.generated} → 采用 ${r.adopted}）" style="position:absolute; left:50%; bottom:${r.rate}%; transform:translate(-50%,50%); width:7px; height:7px; border-radius:50%; background:#0b0b12; border:2px solid #fbbf24; box-sizing:border-box; z-index:2;"></div>`:''}
+              </div>
+              <div style="font-size:9px; color:#666; white-space:nowrap;">${lbl}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        ${rateOverlay}
       </div>
     </div>`;
 }
@@ -2509,6 +2546,10 @@ function isStatVideoAdopted(v) {
   }
   return ((h >>> 0) % 100) < 57; // 采用率 ≈ 57%，稳定分布
 }
+// 素材成功率属于管理考核指标：仅超管与经理可见（组长、成员不可见，个人统计里也不展示）。
+function canViewSuccessRate(user = currentUser) {
+  return user.role === 'superadmin' || user.role === 'manager';
+}
 function computeStatsSuccess(videos) {
   const list = videos || [];
   const generated = list.length;
@@ -2523,82 +2564,11 @@ function successRateColor(rate, generated) {
   if (rate >= 45) return '#fbbf24';
   return '#f87171';
 }
-function renderSuccessRateBar(rate, generated) {
-  const c = successRateColor(rate, generated);
-  return `
-    <div style="display:flex; align-items:center; gap:10px;">
-      <div style="flex:1; height:6px; background:#0f0f17; border-radius:999px; overflow:hidden; min-width:70px;">
-        <div style="height:100%; width:${generated ? rate : 0}%; background:${c}; border-radius:999px;"></div>
-      </div>
-      <span style="flex:0 0 42px; text-align:right; font-size:12px; font-weight:600; color:${c}; font-variant-numeric:tabular-nums;">${generated ? rate + '%' : '—'}</span>
-    </div>`;
-}
-function renderStatsSuccessTable({ title, note, firstColLabel, rows, totalLabel }) {
-  const totals = rows.reduce((a, r) => ({ generated: a.generated + r.generated, adopted: a.adopted + r.adopted }), { generated: 0, adopted: 0 });
-  const totalRate = totals.generated ? Math.round(totals.adopted / totals.generated * 100) : 0;
-  const th = (label, align) => `<th style="padding:8px 10px; font-weight:500; color:#888; border-bottom:1px solid #1e1e2e; text-align:${align};">${label}</th>`;
-  const numCell = (val, color) => `<td style="padding:9px 10px; border-bottom:1px solid #15151f; text-align:right; font-size:12px; color:${color}; font-variant-numeric:tabular-nums;">${val}</td>`;
-  const body = rows.length
-    ? rows.map(r => `
-        <tr>
-          <td style="padding:9px 10px; border-bottom:1px solid #15151f;">${r.firstCell}</td>
-          ${numCell(r.generated, '#4ade80')}
-          ${numCell(r.adopted, '#fbbf24')}
-          <td style="padding:9px 10px; border-bottom:1px solid #15151f;">${renderSuccessRateBar(r.rate, r.generated)}</td>
-        </tr>`).join('')
-    : `<tr><td colspan="4" style="padding:26px 10px; text-align:center; color:#666; font-size:13px;">该范围内暂无生成记录</td></tr>`;
-  const foot = rows.length ? `
-      <tfoot>
-        <tr>
-          <td style="padding:11px 10px; font-size:12px; color:#bbb; font-weight:600;">${totalLabel}</td>
-          <td style="padding:11px 10px; text-align:right; font-size:12px; color:#4ade80; font-weight:600; font-variant-numeric:tabular-nums;">${totals.generated}</td>
-          <td style="padding:11px 10px; text-align:right; font-size:12px; color:#fbbf24; font-weight:600; font-variant-numeric:tabular-nums;">${totals.adopted}</td>
-          <td style="padding:11px 10px;">${renderSuccessRateBar(totalRate, totals.generated)}</td>
-        </tr>
-      </tfoot>` : '';
-  return `
-    <div class="chart-card" style="margin-bottom:20px;">
-      <div class="section-title" style="margin:0 0 4px; justify-content:flex-start;">${title}</div>
-      <div style="font-size:11px; color:#666; margin-bottom:14px;">${note}</div>
-      <table style="width:100%; border-collapse:collapse; font-size:12px;">
-        <thead>
-          <tr>
-            ${th(firstColLabel, 'left')}
-            ${th('生成', 'right')}
-            ${th('采用', 'right')}
-            <th style="padding:8px 10px; font-weight:500; color:#888; border-bottom:1px solid #1e1e2e; text-align:left; width:190px;">成功率</th>
-          </tr>
-        </thead>
-        <tbody>${body}</tbody>
-        ${foot}
-      </table>
-    </div>`;
-}
-function buildStatsSuccessDaily({ videos }) {
-  const map = new Map();
-  (videos || []).forEach(v => {
-    const day = (v.createdAt || '').slice(0, 10);
-    if (!day) return;
-    if (!map.has(day)) map.set(day, []);
-    map.get(day).push(v);
-  });
-  const rows = [...map.entries()]
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([day, list]) => {
-      const s = computeStatsSuccess(list);
-      const parts = day.split('-');
-      const label = `${Number(parts[1])}/${Number(parts[2])}`;
-      return {
-        firstCell: `<span style="font-size:12px; color:#ccc; font-variant-numeric:tabular-nums;">${label}</span>`,
-        generated: s.generated, adopted: s.adopted, rate: s.rate,
-      };
-    });
-  return renderStatsSuccessTable({
-    title: '素材成功率 · 每日明细',
-    note: '成功率 = 当天被本人下载采用 ÷ 当天生成成功 · 同一条视频去重 · 组长下载组员的不计入',
-    firstColLabel: '日期',
-    rows,
-    totalLabel: '合计',
+// 按趋势图的 dayKeys 逐天归集成功率；当天无生成记录返回 null（折线断开，不画 0）
+function computeDailySuccessSeries(videos, dayKeys) {
+  return dayKeys.map(k => {
+    const list = (videos || []).filter(v => (v.createdAt || '').slice(0, 10) === k);
+    return list.length ? computeStatsSuccess(list) : null;
   });
 }
 function getLeaderMembers() {
@@ -2632,9 +2602,13 @@ function buildTeamMemberOverview(memberList, producedVideos, filterHtml = '') {
   const counts = computeMemberCounts(memberList, producedVideos);
   const total = counts.length;
   const collapsed = teamMemberOverviewCollapsed;
+  const showSuccess = canViewSuccessRate();
   const cards = counts.map(({user: u, generated, adopted, rate}) => {
     const grp = getGroupForUser(u);
     const rateColor = successRateColor(rate, generated);
+    const rateHtml = showSuccess
+      ? `<div title="素材成功率 = 采用 ${adopted} / 生成 ${generated}（同一条去重·组长下载组员不计）" style="font-size:11px; font-weight:600; color:${rateColor};">${generated ? rate + '%' : '—'}</div>`
+      : '';
     return `
       <div style="background:#0f0f17; border:1px solid #1e1e2e; border-radius:8px; padding:8px 10px; display:flex; align-items:center; gap:8px; min-width:0;">
         <div style="width:24px; height:24px; border-radius:50%; background:${u.color}; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; flex-shrink:0;">${u.short}</div>
@@ -2644,7 +2618,7 @@ function buildTeamMemberOverview(memberList, producedVideos, filterHtml = '') {
         </div>
         <div style="display:flex; gap:10px; flex-shrink:0; align-items:center;">
           <div title="生成视频数（所选范围内产出）" style="font-size:11px; color:#4ade80;">🎬${generated}</div>
-          <div title="素材成功率 = 采用 ${adopted} / 生成 ${generated}（同一条去重·组长下载组员不计）" style="font-size:11px; font-weight:600; color:${rateColor};">${generated ? rate + '%' : '—'}</div>
+          ${rateHtml}
         </div>
       </div>`;
   }).join('');
