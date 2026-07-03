@@ -128,9 +128,23 @@ test('buildStatsRateTrendCard: 平滑曲线+面积填充+逐日悬浮明细；�
   assert.match(card, /素材成功率走势/);
   assert.match(card, /trend-rate-curve/);
   assert.match(card, /trend-rate-area/);
-  assert.match(card, /成功率 \d+%（生成 \d+ → 采用 \d+）/, '逐日悬浮明细可对账');
+  assert.match(card, /showRateTrendHover\(/, '逐日 hover 绑定');
+  assert.match(card, /rate-hover-tip/, 'tooltip 容器就位');
   assert.equal((card.match(/trend-rate-curve/g) || []).length, 1, '跨空档连成一条曲线，不碎段');
   assert.doesNotMatch(card, /近7日/, '口径 = 当天成功率，无统计加工');
+
+  // hover 交互：有数据的天出 竖线+点+成功率明细；无数据的天出"无生成记录"；hide 不抛错
+  const idx = app.eval("statsRateTrendHoverData.series.findIndex(function(r){ return !!r; })");
+  assert.ok(idx >= 0);
+  app.eval(`showRateTrendHover(${idx})`);
+  const tipHtml = app.eval("document.getElementById('rate-hover-tip').innerHTML");
+  assert.match(tipHtml, /成功率 : \d+%/);
+  assert.match(tipHtml, /生成 \d+ · 采用 \d+/, 'tooltip 数字可对账');
+  const emptyIdx = app.eval("statsRateTrendHoverData.series.findIndex(function(r){ return !r; })");
+  app.eval(`showRateTrendHover(${emptyIdx})`);
+  assert.match(app.eval("document.getElementById('rate-hover-tip').innerHTML"), /无生成记录/);
+  app.eval('hideRateTrendHover()');
+  assert.equal(app.eval("document.getElementById('rate-hover-tip').style.display"), 'none');
 });
 
 test('buildStatsTrend: 纯柱状卡，不再包含任何成功率元素', () => {

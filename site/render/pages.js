@@ -2381,10 +2381,55 @@ function buildSmoothCurvePath(pts, yMin, yMax) {
 }
 
 // 素材成功率走势（管理视角独立卡，与生产趋势柱状卡左右排布）：
-// 平滑面积曲线，曲线值 = 当天成功率，无生成的天跨接；左轴 0-100，逐日悬浮可查明细。
+// 平滑面积曲线，曲线值 = 当天成功率，无生成的天跨接；左轴 0-100；
+// 悬浮某天出现竖直参考线 + 曲线高亮点 + tooltip 卡片（日期 / 成功率 / 生成→采用）。
+let statsRateTrendHoverData = null; // { labels, series, days }，随每次渲染刷新
+function showRateTrendHover(i) {
+  const d = statsRateTrendHoverData;
+  if (!d) return;
+  const line = document.getElementById('rate-hover-line');
+  const dot = document.getElementById('rate-hover-dot');
+  const tip = document.getElementById('rate-hover-tip');
+  if (!line || !dot || !tip) return;
+  const pct = (i + 0.5) / d.days * 100;
+  const r = d.series[i];
+  line.style.left = pct + '%';
+  line.style.display = 'block';
+  if (r) {
+    dot.style.left = pct + '%';
+    dot.style.top = (100 - r.rate) + '%';
+    dot.style.display = 'block';
+    tip.innerHTML = `
+      <div style="font-size:12px; color:#888; margin-bottom:4px;">${d.labels[i]}</div>
+      <div style="font-size:13px; font-weight:600; color:#fbbf24;">成功率 : ${r.rate}%</div>
+      <div style="font-size:11px; color:#666; margin-top:3px;">生成 ${r.generated} · 采用 ${r.adopted}</div>`;
+    tip.style.top = Math.min(100 - r.rate, 50) + '%';
+  } else {
+    dot.style.display = 'none';
+    tip.innerHTML = `
+      <div style="font-size:12px; color:#888; margin-bottom:4px;">${d.labels[i]}</div>
+      <div style="font-size:12px; color:#666;">无生成记录</div>`;
+    tip.style.top = '30%';
+  }
+  if (pct <= 55) {
+    tip.style.left = `calc(${pct}% + 12px)`;
+    tip.style.right = 'auto';
+  } else {
+    tip.style.right = `calc(${100 - pct}% + 12px)`;
+    tip.style.left = 'auto';
+  }
+  tip.style.display = 'block';
+}
+function hideRateTrendHover() {
+  ['rate-hover-line', 'rate-hover-dot', 'rate-hover-tip'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+}
 function buildStatsRateTrendCard({ videos }) {
   const { labels, dayKeys, days, labelStep } = getStatsTrendWindow();
   const rateData = computeDailySuccessSeries(videos, dayKeys);
+  statsRateTrendHoverData = { labels, series: rateData, days };
   const H = 170;
   const yOf = rate => H - rate * H / 100;
   const pts = [];
@@ -2405,7 +2450,7 @@ function buildStatsRateTrendCard({ videos }) {
         <div style="position:relative; width:24px; height:170px; flex-shrink:0;">
           ${axis.map(v => `<div style="position:absolute; right:0; top:${(yOf(v) - 4).toFixed(0)}px; font-size:10px; color:#55556a; line-height:1; font-variant-numeric:tabular-nums;">${v}</div>`).join('')}
         </div>
-        <div style="flex:1; position:relative; height:170px; min-width:0;">
+        <div style="flex:1; position:relative; height:170px; min-width:0;" onmouseleave="hideRateTrendHover()">
           <svg style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none;" viewBox="0 0 100 ${H}" preserveAspectRatio="none">
             <defs>
               <linearGradient id="selvaRateAreaGrad" x1="0" y1="0" x2="0" y2="1">
@@ -2418,8 +2463,11 @@ function buildStatsRateTrendCard({ videos }) {
             ${curve ? `<path class="trend-rate-curve" d="${curve}" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` : ''}
           </svg>
           <div style="position:absolute; inset:0; display:flex;">
-            ${labels.map((lbl, i) => { const r = rateData[i]; return `<div style="flex:1; min-width:0;"${r ? ` title="${lbl} · 成功率 ${r.rate}%（生成 ${r.generated} → 采用 ${r.adopted}）"` : ''}></div>`; }).join('')}
+            ${labels.map((lbl, i) => `<div style="flex:1; min-width:0;" onmouseenter="showRateTrendHover(${i})"></div>`).join('')}
           </div>
+          <div id="rate-hover-line" style="display:none; position:absolute; top:0; bottom:0; width:1px; background:rgba(251,191,36,0.35); transform:translateX(-0.5px); pointer-events:none;"></div>
+          <div id="rate-hover-dot" style="display:none; position:absolute; width:10px; height:10px; border-radius:50%; background:#fbbf24; border:2px solid #16161f; box-sizing:border-box; transform:translate(-50%,-50%); pointer-events:none; z-index:2;"></div>
+          <div id="rate-hover-tip" style="display:none; position:absolute; background:#1a1a26; border:1px solid #2a2a3a; border-radius:8px; padding:10px 12px; box-shadow:0 6px 16px rgba(0,0,0,0.45); pointer-events:none; z-index:3; white-space:nowrap;"></div>
         </div>
       </div>
       <div style="display:flex; margin-top:6px; margin-left:32px;">
