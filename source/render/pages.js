@@ -2368,6 +2368,14 @@ function getStatsTrendWindow() {
   return { labels, dayKeys, days, labelStep: Math.max(1, Math.ceil(days / 10)) };
 }
 
+// 趋势卡共用的日期轴行：抽稀后的日期居中于所在列，配 4px 刻度短竖线锚定列中心，避免"标签和柱子对不上"
+function buildTrendAxisRow(labels, labelStep, marginLeft = 0) {
+  return `
+      <div style="display:flex;${marginLeft ? ` margin-left:${marginLeft}px;` : ''}">
+        ${labels.map((lbl, i) => `<div style="flex:1; min-width:0; position:relative; padding-top:6px; text-align:center; font-size:9px; color:#666; white-space:nowrap;">${i % labelStep === 0 ? `<div style="position:absolute; top:0; left:50%; width:1px; height:4px; background:#2f2f44;"></div>${lbl}` : ''}</div>`).join('')}
+      </div>`;
+}
+
 // Catmull-Rom → 三次贝塞尔的平滑曲线 path；控制点 y 夹在 [yMin,yMax] 内，避免 0/100 极值处过冲出界
 function buildSmoothCurvePath(pts, yMin, yMax) {
   if (pts.length < 2) return '';
@@ -2470,9 +2478,7 @@ function buildStatsRateTrendCard({ videos }) {
           <div id="rate-hover-tip" style="display:none; position:absolute; background:#1a1a26; border:1px solid #2a2a3a; border-radius:8px; padding:10px 12px; box-shadow:0 6px 16px rgba(0,0,0,0.45); pointer-events:none; z-index:3; white-space:nowrap;"></div>
         </div>
       </div>
-      <div style="display:flex; margin-top:6px; margin-left:32px;">
-        ${labels.map((lbl, i) => `<div style="flex:1; min-width:0; text-align:center; font-size:9px; color:#666; white-space:nowrap;">${i % labelStep === 0 ? lbl : ''}</div>`).join('')}
-      </div>
+      ${buildTrendAxisRow(labels, labelStep, 32)}
     </div>`;
 }
 
@@ -2503,15 +2509,16 @@ function buildStatsTrend({ tasks, videos }) {
           const tH = taskData[i] ? Math.max(4, taskData[i]/maxV*170) : 0;
           const vH = videoData[i] ? Math.max(4, videoData[i]/maxV*170) : 0;
           return `
-          <div style="flex:1; display:flex; gap:2px; align-items:flex-end; height:100%; padding:0 2px; min-width:0;">
-            ${f.trendTask?`<div style="flex:1; background:linear-gradient(to top, #6d28d9, #a78bfa); border-radius:2px 2px 0 0; height:${tH.toFixed(1)}px;" title="${lbl} · 任务 ${taskData[i]}"></div>`:''}
-            ${f.trendVideo?`<div style="flex:1; background:linear-gradient(to top, #0891b2, #22d3ee); border-radius:2px 2px 0 0; height:${vH.toFixed(1)}px;" title="${lbl} · 视频 ${videoData[i]}"></div>`:''}
+          <div style="flex:1; min-width:0; height:100%; display:flex; align-items:flex-end; justify-content:center;">
+            <div style="width:68%; display:flex; gap:1px; align-items:flex-end; height:100%;">
+              ${f.trendTask?`<div style="flex:1; background:linear-gradient(to top, #6d28d9, #a78bfa); border-radius:2px 2px 0 0; height:${tH.toFixed(1)}px;" title="${lbl} · 任务 ${taskData[i]}"></div>`:''}
+              ${f.trendVideo?`<div style="flex:1; background:linear-gradient(to top, #0891b2, #22d3ee); border-radius:2px 2px 0 0; height:${vH.toFixed(1)}px;" title="${lbl} · 视频 ${videoData[i]}"></div>`:''}
+            </div>
           </div>`;
         }).join('')}
       </div>
-      <div style="display:flex; margin-top:6px;">
-        ${labels.map((lbl, i) => `<div style="flex:1; min-width:0; text-align:center; font-size:9px; color:#666; white-space:nowrap;">${i % labelStep === 0 ? lbl : ''}</div>`).join('')}
-      </div>
+      <div style="height:1px; background:#232338;"></div>
+      ${buildTrendAxisRow(labels, labelStep)}
     </div>`;
 }
 
