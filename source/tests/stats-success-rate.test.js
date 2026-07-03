@@ -117,36 +117,29 @@ test('buildStatsOverview: 超管/经理见成功率卡；showSuccess:false、组
   assert.doesNotMatch(app.eval(`buildStatsOverview(${mk})`), /素材成功率/);
 });
 
-test('buildStatsTrend: 管理视角有成功率图例+数据点+数值标签+折线；空档天跨接不断线；开关可关；个人视角与组长无', () => {
+test('buildStatsRateTrendCard: 平滑曲线+面积填充+逐日悬浮明细；空档天跨接一条曲线', () => {
   const app = loadApp();
-  // 两个生成日中间隔着空档天（落在默认 30 天窗口 3/16-4/14 内）：线应跨接成一条，点只落在生成日
-  const dataExpr = `({ tasks: [], videos: [
+  // 两个生成日中间隔着空档天（落在默认 30 天窗口 3/16-4/14 内）：曲线应跨接成一条
+  const dataExpr = `({ videos: [
     { taskId:'T1', name:'a.mp4', createdAt:'2026-04-02 10:00' },
     { taskId:'T1', name:'b.mp4', createdAt:'2026-04-12 11:00' }
   ] })`;
-  const su = app.eval(`buildStatsTrend(${dataExpr})`);
-  assert.match(su, /成功率/);
-  assert.doesNotMatch(su, /近7日/, '不再使用滚动窗口口径');
-  assert.match(su, /trend-rate-dot/);
-  assert.match(su, /trend-rate-line/);
-  assert.match(su, /trend-rate-label/, '点上有直接可读的百分比数字');
-  assert.equal((su.match(/trend-rate-dot/g) || []).length, 2, '点只标在有生成的两天');
-  assert.equal((su.match(/trend-rate-line/g) || []).length, 1, '跨空档连成一条线，不碎段');
+  const card = app.eval(`buildStatsRateTrendCard(${dataExpr})`);
+  assert.match(card, /素材成功率走势/);
+  assert.match(card, /trend-rate-curve/);
+  assert.match(card, /trend-rate-area/);
+  assert.match(card, /成功率 \d+%（生成 \d+ → 采用 \d+）/, '逐日悬浮明细可对账');
+  assert.equal((card.match(/trend-rate-curve/g) || []).length, 1, '跨空档连成一条曲线，不碎段');
+  assert.doesNotMatch(card, /近7日/, '口径 = 当天成功率，无统计加工');
+});
 
-  app.eval('statsFilter.trendRate = false;');
-  const off = app.eval(`buildStatsTrend(${dataExpr})`);
-  assert.match(off, /成功率/); // 图例仍在，供重新打开
-  assert.doesNotMatch(off, /trend-rate-dot/);
-  app.eval('statsFilter.trendRate = true;');
-
-  const personal = app.eval(`buildStatsTrend(${dataExpr}, { showSuccess: false })`);
-  assert.doesNotMatch(personal, /成功率/);
-  assert.doesNotMatch(personal, /trend-rate-dot/);
-
-  app.setCurrentUserById('u2'); // 组长
-  const ld = app.eval(`buildStatsTrend(${dataExpr})`);
-  assert.doesNotMatch(ld, /成功率/);
-  assert.doesNotMatch(ld, /trend-rate-dot/);
+test('buildStatsTrend: 纯柱状卡，不再包含任何成功率元素', () => {
+  const app = loadApp();
+  const su = app.eval(`buildStatsTrend({ tasks: [], videos: [
+    { taskId:'T1', name:'a.mp4', createdAt:'2026-04-10 10:00' }
+  ] })`);
+  assert.match(su, /每日生产趋势/);
+  assert.doesNotMatch(su, /trend-rate|成功率/);
 });
 
 test('computeMemberCounts: 按成员归集 生成/采用/成功率，不再输出任务数', () => {
@@ -200,16 +193,17 @@ test('renderStatsPage: 个人统计任何角色都不含成功率；旧的每日
   assert.doesNotMatch(mb, /素材成功率/);
 });
 
-test('renderStatsPage: 团队统计超管含成功率卡与折线；组长团队视图不含', () => {
+test('renderStatsPage: 团队统计超管含成功率概览卡+左右排布的走势曲线卡；组长团队视图均不含', () => {
   const app = loadApp();
   app.eval("statsTab = 'team'; renderStatsPage();");
   const su = app.eval("document.getElementById('stats-content').innerHTML");
-  assert.match(su, /素材成功率/);
-  assert.match(su, /trend-rate-dot/);
+  assert.match(su, /素材成功率走势/);
+  assert.match(su, /trend-rate-curve/);
+  assert.match(su, /grid-template-columns:repeat\(auto-fit/, '走势卡与生产趋势卡左右排布');
 
   app.setCurrentUserById('u2'); // 组长
   app.eval("statsTab = 'team'; renderStatsPage();");
   const ld = app.eval("document.getElementById('stats-content').innerHTML");
   assert.doesNotMatch(ld, /素材成功率/);
-  assert.doesNotMatch(ld, /trend-rate-dot/);
+  assert.doesNotMatch(ld, /trend-rate-curve/);
 });

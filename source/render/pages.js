@@ -1926,7 +1926,6 @@ let statsFilter = {
   dateTo: '',
   trendTask: true,
   trendVideo: true,
-  trendRate: true,
   distTool: true,
   distWorkflow: true,
   member: 'all',         // leader-level
@@ -2236,7 +2235,7 @@ function renderStatsPage() {
     const data = { tasks: myTasks, videos: myVideos };
     // 个人统计一律不展示成功率（成功率=管理考核指标，只在团队统计里给超管/经理看）
     contentHtml = buildStatsOverview(data, { showSuccess: false })
-      + buildStatsTrend(data, { showSuccess: false })
+      + buildStatsTrend(data)
       + buildStatsDistribution(data)
       + buildStatsModelDistribution(data);
   } else {
@@ -2333,12 +2332,11 @@ function buildStatsOverview({ tasks, videos }, { showSuccess = canViewSuccessRat
     </div>`;
 }
 
-function buildStatsTrend({ tasks, videos }, { showSuccess = canViewSuccessRate() } = {}) {
+// 趋势图共用的日期窗口（成功率走势卡与生产趋势柱状卡保持同一时间轴）
+function getStatsTrendWindow() {
   const f = statsFilter;
   const base = new Date('2026-04-14T00:00:00');
   const pad = n => String(n).padStart(2,'0');
-
-  // 根据时间范围动态确定日期区间
   let startDate, endDate, days;
   if (f.dateFrom && f.dateTo) {
     startDate = new Date(f.dateFrom + 'T00:00:00');
@@ -2360,7 +2358,6 @@ function buildStatsTrend({ tasks, videos }, { showSuccess = canViewSuccessRate()
     startDate = new Date(base); startDate.setDate(startDate.getDate() - 29);
     days = 30;
   }
-
   const labels = [];
   const dayKeys = [];
   for (let i = 0; i < days; i++) {
@@ -2368,45 +2365,75 @@ function buildStatsTrend({ tasks, videos }, { showSuccess = canViewSuccessRate()
     labels.push((d.getMonth()+1) + '/' + d.getDate());
     dayKeys.push(d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()));
   }
+  return { labels, dayKeys, days, labelStep: Math.max(1, Math.ceil(days / 10)) };
+}
+
+// Catmull-Rom → 三次贝塞尔的平滑曲线 path；控制点 y 夹在 [yMin,yMax] 内，避免 0/100 极值处过冲出界
+function buildSmoothCurvePath(pts, yMin, yMax) {
+  if (pts.length < 2) return '';
+  const cl = y => Math.min(yMax, Math.max(yMin, y));
+  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    d += ` C ${(p1.x + (p2.x - p0.x) / 6).toFixed(2)} ${cl(p1.y + (p2.y - p0.y) / 6).toFixed(2)} ${(p2.x - (p3.x - p1.x) / 6).toFixed(2)} ${cl(p2.y - (p3.y - p1.y) / 6).toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+  return d;
+}
+
+// 素材成功率走势（管理视角独立卡，与生产趋势柱状卡左右排布）：
+// 平滑面积曲线，曲线值 = 当天成功率，无生成的天跨接；左轴 0-100，逐日悬浮可查明细。
+function buildStatsRateTrendCard({ videos }) {
+  const { labels, dayKeys, days, labelStep } = getStatsTrendWindow();
+  const rateData = computeDailySuccessSeries(videos, dayKeys);
+  const H = 170;
+  const yOf = rate => H - rate * H / 100;
+  const pts = [];
+  rateData.forEach((r, i) => { if (r) pts.push({ x: (i + 0.5) / days * 100, y: yOf(r.rate) }); });
+  let curve = buildSmoothCurvePath(pts, 0, H);
+  if (!curve && pts.length === 1) curve = `M ${(pts[0].x - 2).toFixed(2)} ${pts[0].y.toFixed(2)} L ${(pts[0].x + 2).toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  const area = pts.length > 1
+    ? `${curve} L ${pts[pts.length - 1].x.toFixed(2)} ${H} L ${pts[0].x.toFixed(2)} ${H} Z`
+    : '';
+  const axis = [100, 75, 50, 25, 0];
+  return `
+    <div class="chart-card" style="margin-bottom:20px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; gap:10px;">
+        <div class="section-title" style="margin:0;">素材成功率走势</div>
+        <span style="font-size:11px; color:#666; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">当天被本人下载采用 ÷ 当天生成成功</span>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <div style="position:relative; width:24px; height:170px; flex-shrink:0;">
+          ${axis.map(v => `<div style="position:absolute; right:0; top:${(yOf(v) - 4).toFixed(0)}px; font-size:10px; color:#55556a; line-height:1; font-variant-numeric:tabular-nums;">${v}</div>`).join('')}
+        </div>
+        <div style="flex:1; position:relative; height:170px; min-width:0;">
+          <svg style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none;" viewBox="0 0 100 ${H}" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="selvaRateAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#fbbf24" stop-opacity="0.26"/>
+                <stop offset="1" stop-color="#fbbf24" stop-opacity="0.02"/>
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="${(H - 0.5).toFixed(1)}" x2="100" y2="${(H - 0.5).toFixed(1)}" stroke="#232338" vector-effect="non-scaling-stroke"/>
+            ${area ? `<path class="trend-rate-area" d="${area}" fill="url(#selvaRateAreaGrad)"/>` : ''}
+            ${curve ? `<path class="trend-rate-curve" d="${curve}" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` : ''}
+          </svg>
+          <div style="position:absolute; inset:0; display:flex;">
+            ${labels.map((lbl, i) => { const r = rateData[i]; return `<div style="flex:1; min-width:0;"${r ? ` title="${lbl} · 成功率 ${r.rate}%（生成 ${r.generated} → 采用 ${r.adopted}）"` : ''}></div>`; }).join('')}
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; margin-top:6px; margin-left:32px;">
+        ${labels.map((lbl, i) => `<div style="flex:1; min-width:0; text-align:center; font-size:9px; color:#666; white-space:nowrap;">${i % labelStep === 0 ? lbl : ''}</div>`).join('')}
+      </div>
+    </div>`;
+}
+
+function buildStatsTrend({ tasks, videos }) {
+  const f = statsFilter;
+  const { labels, dayKeys, days, labelStep } = getStatsTrendWindow();
   const taskData = dayKeys.map(k => tasks.filter(t => (t.createdAt||'').slice(0,10) === k).length);
   const videoData = dayKeys.map(k => videos.filter(v => (v.createdAt||'').slice(0,10) === k).length);
   const maxV = Math.max(1, ...taskData, ...videoData) * 1.2;
-
-  // 成功率带（管理视角）：与柱状带上下分离、共用日期轴。
-  // 比率（0-100%）与产量（条数）是两种量纲，拆成两个绘图带互不干扰；
-  // 率带内点与折线锚定同一容器的同一像素刻度，横向三带共用等分列结构（无 gap），天然对齐。
-  const showRate = showSuccess && f.trendRate;
-  const rateData = showRate ? computeDailySuccessSeries(videos, dayKeys) : [];
-  const RATE_H = 68, RATE_BASE = 6, RATE_SPAN = 42; // 带高 / 0% 距带底 / 0→100% 量程（顶部余量放数字标签）
-  const rateBottom = rate => RATE_BASE + rate * RATE_SPAN / 100;    // 点：距带底像素
-  const rateY = rate => RATE_H - rateBottom(rate);                  // 线：SVG y（同一刻度）
-  let rateBand = '';
-  if (showRate) {
-    const pts = [];
-    rateData.forEach((r, i) => {
-      if (r) pts.push(((i + 0.5) / days * 100).toFixed(2) + ',' + rateY(r.rate).toFixed(1));
-    });
-    const line = pts.length > 1 ? `<polyline class="trend-rate-line" points="${pts.join(' ')}" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` : '';
-    const grid = (rate, dashed) => `<line x1="0" y1="${rateY(rate).toFixed(1)}" x2="100" y2="${rateY(rate).toFixed(1)}" stroke="#232338" ${dashed ? 'stroke-dasharray="3 3" ' : ''}vector-effect="non-scaling-stroke"/>`;
-    const tick = (rate, label) => `<div style="position:absolute; right:-34px; width:30px; top:${(rateY(rate) - 4).toFixed(0)}px; font-size:8px; color:#4e4e63; line-height:1;">${label}</div>`;
-    rateBand = `
-      <div style="position:relative; height:${RATE_H}px;">
-        <svg style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none;" viewBox="0 0 100 ${RATE_H}" preserveAspectRatio="none">
-          ${grid(100)}${grid(50, true)}${grid(0)}
-          ${line}
-        </svg>
-        <div style="position:absolute; inset:0; display:flex;">
-          ${labels.map((lbl, i) => {
-            const r = rateData[i];
-            return `<div style="flex:1; position:relative; min-width:0;">${r ? `
-              <div class="trend-rate-dot" title="${lbl} · 成功率 ${r.rate}%（生成 ${r.generated} → 采用 ${r.adopted}）" style="position:absolute; left:50%; bottom:${rateBottom(r.rate).toFixed(1)}px; transform:translate(-50%,50%); width:7px; height:7px; border-radius:50%; background:#16161f; border:1.5px solid #fbbf24; box-sizing:border-box;"></div>
-              <div class="trend-rate-label" style="position:absolute; left:50%; bottom:${(rateBottom(r.rate) + 6).toFixed(1)}px; transform:translateX(-50%); font-size:8px; font-weight:600; color:#fbbf24; font-variant-numeric:tabular-nums; white-space:nowrap; pointer-events:none;">${r.rate}</div>` : ''}</div>`;
-          }).join('')}
-        </div>
-        ${tick(100, '100%')}${tick(50, '50%')}${tick(0, '0%')}
-      </div>
-      <div style="height:1px; background:#1e1e2e; margin:6px 0 10px;"></div>`;
-  }
 
   return `
     <div class="chart-card" style="margin-bottom:20px;">
@@ -2421,31 +2448,21 @@ function buildStatsTrend({ tasks, videos }, { showSuccess = canViewSuccessRate()
             <span style="width:10px; height:10px; border-radius:2px; background:${f.trendVideo?'#06b6d4':'#444'}; display:inline-block;"></span>
             <span style="color:${f.trendVideo?'#67e8f9':'#666'};">视频</span>
           </label>
-          ${showSuccess ? `
-          <label style="display:flex; align-items:center; gap:5px; cursor:pointer;" onclick="toggleStatsFlag('trendRate')">
-            <span style="display:inline-flex; align-items:center;">
-              <span style="width:4px; height:1.5px; background:${f.trendRate?'#fbbf24':'#444'};"></span><span style="width:7px; height:7px; border-radius:50%; border:1.5px solid ${f.trendRate?'#fbbf24':'#444'}; box-sizing:border-box;"></span><span style="width:4px; height:1.5px; background:${f.trendRate?'#fbbf24':'#444'};"></span>
-            </span>
-            <span style="color:${f.trendRate?'#fde68a':'#666'};">成功率</span>
-          </label>` : ''}
         </div>
       </div>
-      <div style="${showRate ? 'padding-right:36px;' : ''}">
-        ${rateBand}
-        <div style="display:flex; align-items:flex-end; height:120px;">
-          ${labels.map((lbl,i) => {
-            const tH = taskData[i] ? Math.max(4, taskData[i]/maxV*112) : 0;
-            const vH = videoData[i] ? Math.max(4, videoData[i]/maxV*112) : 0;
-            return `
-            <div style="flex:1; display:flex; gap:2px; align-items:flex-end; height:100%; padding:0 2px; min-width:0;">
-              ${f.trendTask?`<div style="flex:1; background:linear-gradient(to top, #6d28d9, #a78bfa); border-radius:2px 2px 0 0; height:${tH.toFixed(1)}px;" title="${lbl} · 任务 ${taskData[i]}"></div>`:''}
-              ${f.trendVideo?`<div style="flex:1; background:linear-gradient(to top, #0891b2, #22d3ee); border-radius:2px 2px 0 0; height:${vH.toFixed(1)}px;" title="${lbl} · 视频 ${videoData[i]}"></div>`:''}
-            </div>`;
-          }).join('')}
-        </div>
-        <div style="display:flex; margin-top:6px;">
-          ${labels.map(lbl => `<div style="flex:1; min-width:0; text-align:center; font-size:9px; color:#666; white-space:nowrap;">${lbl}</div>`).join('')}
-        </div>
+      <div style="display:flex; align-items:flex-end; height:170px;">
+        ${labels.map((lbl,i) => {
+          const tH = taskData[i] ? Math.max(4, taskData[i]/maxV*170) : 0;
+          const vH = videoData[i] ? Math.max(4, videoData[i]/maxV*170) : 0;
+          return `
+          <div style="flex:1; display:flex; gap:2px; align-items:flex-end; height:100%; padding:0 2px; min-width:0;">
+            ${f.trendTask?`<div style="flex:1; background:linear-gradient(to top, #6d28d9, #a78bfa); border-radius:2px 2px 0 0; height:${tH.toFixed(1)}px;" title="${lbl} · 任务 ${taskData[i]}"></div>`:''}
+            ${f.trendVideo?`<div style="flex:1; background:linear-gradient(to top, #0891b2, #22d3ee); border-radius:2px 2px 0 0; height:${vH.toFixed(1)}px;" title="${lbl} · 视频 ${videoData[i]}"></div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex; margin-top:6px;">
+        ${labels.map((lbl, i) => `<div style="flex:1; min-width:0; text-align:center; font-size:9px; color:#666; white-space:nowrap;">${i % labelStep === 0 ? lbl : ''}</div>`).join('')}
       </div>
     </div>`;
 }
@@ -2678,7 +2695,7 @@ function buildTeamStatsLeader() {
     </div>
     ${buildTeamMemberOverview(selected, data.videos)}
     ${buildStatsOverview(data)}
-    ${buildStatsTrend(data)}
+    ${canViewSuccessRate() ? `<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(380px, 1fr)); gap:20px;">${buildStatsRateTrendCard(data)}${buildStatsTrend(data)}</div>` : buildStatsTrend(data)}
     ${buildStatsDistribution(data)}
     ${buildStatsModelDistribution(data)}
   `;
@@ -2701,7 +2718,7 @@ function buildTeamStatsManager() {
     </div>
     ${buildTeamMemberOverview(memberList, data.videos)}
     ${buildStatsOverview(data)}
-    ${buildStatsTrend(data)}
+    ${canViewSuccessRate() ? `<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(380px, 1fr)); gap:20px;">${buildStatsRateTrendCard(data)}${buildStatsTrend(data)}</div>` : buildStatsTrend(data)}
     ${buildStatsDistribution(data)}
     ${buildStatsModelDistribution(data)}
   `;
@@ -2724,7 +2741,7 @@ function buildTeamStatsSuperadmin() {
   return `
     ${buildTeamMemberOverview(memberList, data.videos, bizFilterHtml)}
     ${buildStatsOverview(data)}
-    ${buildStatsTrend(data)}
+    ${canViewSuccessRate() ? `<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(380px, 1fr)); gap:20px;">${buildStatsRateTrendCard(data)}${buildStatsTrend(data)}</div>` : buildStatsTrend(data)}
     ${buildStatsDistribution(data)}
     ${buildStatsModelDistribution(data)}
   `;
