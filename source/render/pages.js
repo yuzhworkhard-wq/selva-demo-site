@@ -5330,6 +5330,7 @@ function renderLibrary() {
   const tabs = [
     { id: 'scripts', label: '📝 脚本', count: libraryScripts.length },
     { id: 'assets', label: '🎞 素材', count: libraryAssets.length },
+    { id: 'characters', label: '🎭 角色', count: libraryCharacters.length },
     { id: 'workflows', label: '🔁 工作流', count: globalWorkflows.length },
   ];
 
@@ -5337,6 +5338,8 @@ function renderLibrary() {
     ? '<button class="btn btn-primary" onclick="showModal(\'import-script\')">+ 导入脚本</button>'
     : libraryTab === 'assets'
     ? '<button class="btn btn-primary" onclick="showModal(\'import-asset\')">+ 导入素材</button>'
+    : libraryTab === 'characters'
+    ? '<button class="btn btn-primary" onclick="showModal(\'create-character\')">+ 创建角色</button>'
     : '<button class="btn btn-primary" onclick="showModal(\'library-workflow\')">+ 新建工作流</button>';
 
   let contentHtml = '';
@@ -5344,6 +5347,8 @@ function renderLibrary() {
     contentHtml = renderLibraryItems(libraryScripts, '脚本', '📝');
   } else if (libraryTab === 'assets') {
     contentHtml = renderLibraryItems(libraryAssets, '素材', '🎞');
+  } else if (libraryTab === 'characters') {
+    contentHtml = renderLibraryCharacters();
   } else {
     contentHtml = renderLibraryWorkflows();
   }
@@ -5359,11 +5364,12 @@ function renderLibrary() {
           <div class="tab-switch-item ${libraryTab === t.id ? 'active' : ''}" onclick="setLibraryTab('${t.id}')">${t.label} <span style="font-size:11px; opacity:0.6; margin-left:4px;">${t.count}</span></div>
         `).join('')}
       </div>
+      ${libraryTab === 'characters' ? '' : `
       <select onchange="setLibFilter(this.value)" style="background:#16161f; border:1px solid #2a2a3a; border-radius:8px; color:#e0e0e0; padding:8px 12px; font-size:13px; outline:none; min-width:100px; cursor:pointer;">
         <option value="mine" ${libFilter === 'mine' ? 'selected' : ''}>我的</option>
         <option value="team" ${libFilter === 'team' ? 'selected' : ''}>共享</option>
         <option value="all" ${libFilter === 'all' ? 'selected' : ''}>全部</option>
-      </select>
+      </select>`}
     </div>
     <div class="search-bar" style="margin-bottom:16px;">
       <input type="text" placeholder="搜索..." id="lib-search" oninput="renderLibrary()">
@@ -5453,6 +5459,87 @@ function renderLibraryWorkflows() {
         </div>` : ''}
       </div>`;
   }).join('')}</div>`;
+}
+
+// ===== 角色库 (Character Library) =====
+let charGenderFilter = 'all';
+let charAgeFilter = 'all';
+let charFavOnly = false;
+
+const CHAR_GENDER_LABELS = { female: '女性', male: '男性' };
+const CHAR_AGE_LABELS = { young: '青年', adult: '成年', middle: '中年', senior: '老年' };
+
+function setCharGenderFilter(g) {
+  charGenderFilter = charGenderFilter === g ? 'all' : g;
+  renderLibrary();
+}
+function setCharAgeFilter(a) {
+  charAgeFilter = charAgeFilter === a ? 'all' : a;
+  renderLibrary();
+}
+function toggleCharFavOnly() {
+  charFavOnly = !charFavOnly;
+  renderLibrary();
+}
+function toggleCharFav(charId) {
+  const c = libraryCharacters.find(x => x.id === charId);
+  if (!c) return;
+  c.fav = !c.fav;
+  renderLibrary();
+  toast(c.fav ? `已收藏「${c.name}」` : `已取消收藏「${c.name}」`);
+}
+
+function charFavIcon(faved) {
+  const heartPath = 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z';
+  return faved
+    ? `<svg viewBox="0 0 24 24" fill="currentColor"><path d="${heartPath}"/></svg>`
+    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="${heartPath}"/></svg>`;
+}
+
+function renderLibraryCharacters() {
+  const q = (document.getElementById('lib-search')?.value || '').toLowerCase();
+  const list = libraryCharacters.filter(c =>
+    (charGenderFilter === 'all' || c.gender === charGenderFilter) &&
+    (charAgeFilter === 'all' || c.age === charAgeFilter) &&
+    (!charFavOnly || c.fav) &&
+    (!q || c.name.toLowerCase().includes(q) || (c.desc || '').toLowerCase().includes(q))
+  );
+
+  const genderChips = Object.entries(CHAR_GENDER_LABELS).map(([k, label]) =>
+    `<button class="char-chip ${charGenderFilter === k ? 'active' : ''}" onclick="setCharGenderFilter('${k}')">${label}</button>`).join('');
+  const ageChips = Object.entries(CHAR_AGE_LABELS).map(([k, label]) =>
+    `<button class="char-chip ${charAgeFilter === k ? 'active' : ''}" onclick="setCharAgeFilter('${k}')">${label}</button>`).join('');
+
+  const cards = list.map(c => `
+    <div class="char-card">
+      <div class="char-thumb">
+        ${c.img
+          ? `<img src="${c.img}" alt="${c.name}" loading="lazy">`
+          : `<div class="char-thumb-placeholder"><span class="char-initial">${c.name.charAt(0).toUpperCase()}</span><span class="char-generating">形象生成中…</span></div>`}
+        <button class="char-fav ${c.fav ? 'faved' : ''}" title="${c.fav ? '取消收藏' : '收藏'}" onclick="event.stopPropagation();toggleCharFav('${c.id}')">${charFavIcon(c.fav)}</button>
+      </div>
+      <div class="char-name">${c.name}</div>
+    </div>`).join('');
+
+  return `
+    <div class="char-filter-bar">
+      <span class="char-filter-label">性别</span>${genderChips}
+      <span class="char-filter-sep"></span>
+      <span class="char-filter-label">年龄</span>${ageChips}
+      <button class="char-chip char-chip-fav ${charFavOnly ? 'active' : ''}" onclick="toggleCharFavOnly()">♥ 已收藏</button>
+    </div>
+    <div class="char-grid">
+      <div class="char-card char-create" onclick="showModal('create-character')">
+        <div class="char-thumb char-create-thumb">
+          <div class="char-create-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
+          <div class="char-create-title">创建角色</div>
+          <div class="char-create-sub">定制你的专属 AI 角色</div>
+        </div>
+      </div>
+      ${cards}
+    </div>
+    ${!list.length ? '<div style="color:#666; padding:24px; text-align:center;">没有符合条件的角色</div>' : ''}
+  `;
 }
 
 function toggleLibItemScope(itemId, newScope) {

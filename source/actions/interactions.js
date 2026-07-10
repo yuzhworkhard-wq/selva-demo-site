@@ -623,6 +623,40 @@ function showModal(type, extra) {
       </div>
     `;
     window._importFiles = [];
+  } else if (type === 'create-character') {
+    body.innerHTML = `
+      <h3>创建角色</h3>
+      <label>角色名称</label>
+      <input type="text" id="m-char-name" placeholder="例如：Emily、旁白大叔...">
+      <label>性别</label>
+      <div class="radio-group">
+        <div class="radio-option selected" onclick="selectRadio(this, 'char-gender')" data-value="female"><div class="dot"></div>女性</div>
+        <div class="radio-option" onclick="selectRadio(this, 'char-gender')" data-value="male"><div class="dot"></div>男性</div>
+      </div>
+      <label>年龄段</label>
+      <select id="m-char-age">
+        <option value="young">青年</option>
+        <option value="adult" selected>成年</option>
+        <option value="middle">中年</option>
+        <option value="senior">老年</option>
+      </select>
+      <label>形象素材</label>
+      <div class="file-upload-zone" onclick="document.getElementById('import-file-input').click()"
+           ondragover="event.preventDefault();this.style.borderColor='#7c3aed';"
+           ondragleave="this.style.borderColor='#2a2a3a';"
+           ondrop="event.preventDefault();this.style.borderColor='#2a2a3a';handleImportFiles(event.dataTransfer.files);">
+        <div class="upload-icon">🎥</div>
+        <strong>上传出镜视频或形象照</strong>
+        <div style="margin-top:4px;">建议上传 30 秒以上正面出镜视频，生成效果更佳</div>
+      </div>
+      <input type="file" id="import-file-input" multiple accept="video/*,image/*" style="display:none;" onchange="handleImportFiles(this.files)">
+      <div id="import-file-list" style="margin-top:12px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="hideModal()">取消</button>
+        <button class="btn btn-primary" onclick="doCreateCharacter()">创建</button>
+      </div>
+    `;
+    window._importFiles = [];
   }
 }
 
@@ -1320,6 +1354,33 @@ function doImportAsset() {
   libraryTab = 'assets';
   renderLibrary();
   toast(`素材包 "${name}" 已导入 (${files.length} 个文件)`);
+}
+
+function doCreateCharacter() {
+  const name = document.getElementById('m-char-name')?.value.trim();
+  if (!name) { toast('请输入角色名称'); return; }
+  const gender = document.querySelector('.radio-option.selected')?.dataset.value || 'female';
+  const age = document.getElementById('m-char-age')?.value || 'adult';
+
+  libraryCharacters.unshift({
+    id: 'lc-' + Date.now(),
+    name, gender, age,
+    img: '',
+    desc: '自定义角色',
+    creator: currentUser.id,
+    scope: 'personal',
+    createdAt: new Date().toISOString().slice(0, 10),
+    fav: false,
+  });
+  window._importFiles = [];
+  hideModal();
+  libraryTab = 'characters';
+  // 重置筛选，确保新角色出现在列表首位
+  charGenderFilter = 'all';
+  charAgeFilter = 'all';
+  charFavOnly = false;
+  renderLibrary();
+  toast(`角色「${name}」已创建，形象生成中`);
 }
 
 // ===== Context Menus =====
