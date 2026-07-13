@@ -5309,7 +5309,7 @@ function unmountWorkflow(wfId) {
 }
 
 // ===== Library =====
-let libraryTab = 'scripts';
+let libraryTab = 'characters';
 let libFilter = 'mine';
 
 function setLibraryTab(tab) {
@@ -5328,9 +5328,9 @@ function renderLibrary() {
   if (!container) return;
 
   const tabs = [
+    { id: 'characters', label: '🎭 角色', count: libraryCharacters.length },
     { id: 'scripts', label: '📝 脚本', count: libraryScripts.length },
     { id: 'assets', label: '🎞 素材', count: libraryAssets.length },
-    { id: 'characters', label: '🎭 角色', count: libraryCharacters.length },
     { id: 'workflows', label: '🔁 工作流', count: globalWorkflows.length },
   ];
 
@@ -5339,7 +5339,7 @@ function renderLibrary() {
     : libraryTab === 'assets'
     ? '<button class="btn btn-primary" onclick="showModal(\'import-asset\')">+ 导入素材</button>'
     : libraryTab === 'characters'
-    ? '<button class="btn btn-primary" onclick="showModal(\'create-character\')">+ 创建角色</button>'
+    ? ''
     : '<button class="btn btn-primary" onclick="showModal(\'library-workflow\')">+ 新建工作流</button>';
 
   let contentHtml = '';

@@ -625,27 +625,28 @@ function showModal(type, extra) {
     window._importFiles = [];
   } else if (type === 'create-character') {
     body.innerHTML = `
+      <div class="char-modal-body">
       <h3>创建角色</h3>
       <label>角色名称</label>
       <input type="text" id="m-char-name" placeholder="例如：Emily、旁白大叔...">
       <label>性别</label>
-      <div class="radio-group">
-        <div class="radio-option selected" onclick="selectRadio(this, 'char-gender')" data-value="female"><div class="dot"></div>女性</div>
-        <div class="radio-option" onclick="selectRadio(this, 'char-gender')" data-value="male"><div class="dot"></div>男性</div>
+      <div class="char-chip-group" id="m-char-gender">
+        <button type="button" class="char-chip active" data-value="female" onclick="charModalPick(this)">女性</button>
+        <button type="button" class="char-chip" data-value="male" onclick="charModalPick(this)">男性</button>
       </div>
       <label>年龄段</label>
-      <select id="m-char-age">
-        <option value="young">青年</option>
-        <option value="adult" selected>成年</option>
-        <option value="middle">中年</option>
-        <option value="senior">老年</option>
-      </select>
+      <div class="char-chip-group" id="m-char-age">
+        <button type="button" class="char-chip" data-value="young" onclick="charModalPick(this)">青年</button>
+        <button type="button" class="char-chip active" data-value="adult" onclick="charModalPick(this)">成年</button>
+        <button type="button" class="char-chip" data-value="middle" onclick="charModalPick(this)">中年</button>
+        <button type="button" class="char-chip" data-value="senior" onclick="charModalPick(this)">老年</button>
+      </div>
       <label>形象素材</label>
       <div class="file-upload-zone" onclick="document.getElementById('import-file-input').click()"
-           ondragover="event.preventDefault();this.style.borderColor='#7c3aed';"
-           ondragleave="this.style.borderColor='#2a2a3a';"
-           ondrop="event.preventDefault();this.style.borderColor='#2a2a3a';handleImportFiles(event.dataTransfer.files);">
-        <div class="upload-icon">🎥</div>
+           ondragover="event.preventDefault();this.style.borderColor='#6161ff';"
+           ondragleave="this.style.borderColor='';"
+           ondrop="event.preventDefault();this.style.borderColor='';handleImportFiles(event.dataTransfer.files);">
+        <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="13" height="12" rx="2.5"/><path d="M15 10.5l6-3.5v10l-6-3.5"/></svg></div>
         <strong>上传出镜视频或形象照</strong>
         <div style="margin-top:4px;">建议上传 30 秒以上正面出镜视频，生成效果更佳</div>
       </div>
@@ -654,6 +655,7 @@ function showModal(type, extra) {
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="hideModal()">取消</button>
         <button class="btn btn-primary" onclick="doCreateCharacter()">创建</button>
+      </div>
       </div>
     `;
     window._importFiles = [];
@@ -1356,11 +1358,16 @@ function doImportAsset() {
   toast(`素材包 "${name}" 已导入 (${files.length} 个文件)`);
 }
 
+function charModalPick(el) {
+  el.parentElement.querySelectorAll('.char-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
 function doCreateCharacter() {
   const name = document.getElementById('m-char-name')?.value.trim();
   if (!name) { toast('请输入角色名称'); return; }
-  const gender = document.querySelector('.radio-option.selected')?.dataset.value || 'female';
-  const age = document.getElementById('m-char-age')?.value || 'adult';
+  const gender = document.querySelector('#m-char-gender .char-chip.active')?.dataset.value || 'female';
+  const age = document.querySelector('#m-char-age .char-chip.active')?.dataset.value || 'adult';
 
   libraryCharacters.unshift({
     id: 'lc-' + Date.now(),

@@ -2155,3 +2155,14 @@
   .char-create-icon svg { width: 20px; height: 20px; }
   .char-create-title { font-size: 14px; font-weight: 600; color: #f3f3f4; }
   .char-create-sub { font-size: 11px; color: #6c6e73; }
+  /* 创建角色弹窗（仅此弹窗内覆盖全站 modal 紫色系） */
+  .char-modal-body label { color: #a2a4a9; }
+  .char-modal-body input[type="text"] { background: #141515; border-color: #2b2d31; }
+  .char-modal-body input[type="text"]:focus { border-color: #6161ff; }
+  .char-chip-group { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+  .char-modal-body .file-upload-zone { border: 1.5px dashed #3a3d42; border-radius: 8px; background: #1c1d1f; color: #6c6e73; transition: all 180ms ease; }
+  .char-modal-body .file-upload-zone:hover { border-color: #6161ff; background: rgba(97, 97, 255, 0.14); color: #a2a4a9; }
+  .char-modal-body .file-upload-zone strong { color: #f3f3f4; }
+  .char-modal-body .upload-icon svg { width: 30px; height: 30px; color: #a2a4a9; }
+  .char-modal-body .btn-primary { background: #6161ff; }
+  .char-modal-body .btn-primary:hover { background: #7676ff; }
