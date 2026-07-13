@@ -5464,10 +5464,13 @@ function renderLibraryWorkflows() {
 // ===== 角色库 (Character Library) =====
 let charGenderFilter = 'all';
 let charAgeFilter = 'all';
+let charEthnicityFilter = 'all';
 let charFavOnly = false;
+let charMoreOpen = false;
 
 const CHAR_GENDER_LABELS = { female: '女性', male: '男性' };
 const CHAR_AGE_LABELS = { young: '青年', adult: '成年', middle: '中年', senior: '老年' };
+const CHAR_ETHNICITY_LABELS = { white: '欧美白人', black: '非裔/黑人', 'east-asian': '东亚', 'south-asian': '南亚/东南亚', latino: '拉丁裔', mena: '中东/北非' };
 
 function setCharGenderFilter(g) {
   charGenderFilter = charGenderFilter === g ? 'all' : g;
@@ -5475,6 +5478,25 @@ function setCharGenderFilter(g) {
 }
 function setCharAgeFilter(a) {
   charAgeFilter = charAgeFilter === a ? 'all' : a;
+  renderLibrary();
+}
+function setCharEthnicityFilter(k) {
+  charEthnicityFilter = charEthnicityFilter === k ? 'all' : k;
+  renderLibrary();
+}
+function toggleCharMorePanel() {
+  charMoreOpen = !charMoreOpen;
+  if (charMoreOpen) {
+    document.addEventListener('click', closeCharMoreOutside);
+  } else {
+    document.removeEventListener('click', closeCharMoreOutside);
+  }
+  renderLibrary();
+}
+function closeCharMoreOutside(e) {
+  if (e.target.closest && e.target.closest('.char-more-wrap')) return;
+  charMoreOpen = false;
+  document.removeEventListener('click', closeCharMoreOutside);
   renderLibrary();
 }
 function toggleCharFavOnly() {
@@ -5501,6 +5523,7 @@ function renderLibraryCharacters() {
   const list = libraryCharacters.filter(c =>
     (charGenderFilter === 'all' || c.gender === charGenderFilter) &&
     (charAgeFilter === 'all' || c.age === charAgeFilter) &&
+    (charEthnicityFilter === 'all' || c.ethnicity === charEthnicityFilter) &&
     (!charFavOnly || c.fav) &&
     (!q || c.name.toLowerCase().includes(q) || (c.desc || '').toLowerCase().includes(q))
   );
@@ -5509,6 +5532,21 @@ function renderLibraryCharacters() {
     `<button class="char-chip ${charGenderFilter === k ? 'active' : ''}" onclick="setCharGenderFilter('${k}')">${label}</button>`).join('');
   const ageChips = Object.entries(CHAR_AGE_LABELS).map(([k, label]) =>
     `<button class="char-chip ${charAgeFilter === k ? 'active' : ''}" onclick="setCharAgeFilter('${k}')">${label}</button>`).join('');
+  const ethnicityChips = Object.entries(CHAR_ETHNICITY_LABELS).map(([k, label]) =>
+    `<button class="char-chip ${charEthnicityFilter === k ? 'active' : ''}" onclick="setCharEthnicityFilter('${k}')">${label}</button>`).join('');
+  const morePanel = `
+    <div class="char-more-wrap">
+      <button class="char-chip char-more-btn ${charMoreOpen || charEthnicityFilter !== 'all' ? 'active' : ''}" onclick="toggleCharMorePanel()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 8h9M17.5 8H20M4 16h2.5M11 16h9"/><circle cx="15" cy="8" r="2.2"/><circle cx="8.5" cy="16" r="2.2"/></svg>
+        更多
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;${charMoreOpen ? 'transform:rotate(180deg);' : ''}"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      ${charMoreOpen ? `
+      <div class="char-more-panel">
+        <div class="char-more-label">种族</div>
+        <div class="char-more-chips">${ethnicityChips}</div>
+      </div>` : ''}
+    </div>`;
 
   const cards = list.map(c => `
     <div class="char-card">
@@ -5526,6 +5564,8 @@ function renderLibraryCharacters() {
       <span class="char-filter-label">性别</span>${genderChips}
       <span class="char-filter-sep"></span>
       <span class="char-filter-label">年龄</span>${ageChips}
+      <span class="char-filter-sep"></span>
+      ${morePanel}
       <button class="char-chip char-chip-fav ${charFavOnly ? 'active' : ''}" onclick="toggleCharFavOnly()">♥ 已收藏</button>
     </div>
     <div class="char-grid">

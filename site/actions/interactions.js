@@ -1426,7 +1426,9 @@ function doCreateCharacter() {
   // 重置筛选，确保新角色出现在列表首位
   charGenderFilter = 'all';
   charAgeFilter = 'all';
+  charEthnicityFilter = 'all';
   charFavOnly = false;
+  charMoreOpen = false;
   renderLibrary();
   toast(`角色「${name}」已创建，形象生成中`);
 }
