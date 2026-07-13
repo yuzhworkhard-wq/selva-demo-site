@@ -5571,7 +5571,6 @@ function renderLibraryCharacters() {
         <button class="char-seg-item ${charViewMode === 'all' ? 'active' : ''}" onclick="setCharViewMode('all')">全部角色</button>
         <button class="char-seg-item ${charViewMode === 'fav' ? 'active' : ''}" onclick="setCharViewMode('fav')">${charFavIcon(false)} 收藏夹</button>
         <button class="char-seg-item ${charViewMode === 'mine' ? 'active' : ''}" onclick="setCharViewMode('mine')">我的角色</button>
-        <button class="char-seg-plus" title="创建角色" onclick="showModal('create-character')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
       </div>
     </div>
     <div class="char-grid">
@@ -5584,7 +5583,7 @@ function renderLibraryCharacters() {
       </div>
       ${cards}
     </div>
-    ${!list.length ? `<div style="color:#6c6e73; padding:24px; text-align:center;">${charViewMode === 'mine' ? '还没有你创建的角色，点右上角 + 新建一个' : '没有符合条件的角色'}</div>` : ''}
+    ${!list.length ? `<div style="color:#6c6e73; padding:24px; text-align:center;">${charViewMode === 'mine' ? '还没有你创建的角色，点「创建角色」卡片新建一个' : '没有符合条件的角色'}</div>` : ''}
   `;
 }
 
