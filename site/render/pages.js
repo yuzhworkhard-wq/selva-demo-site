@@ -5531,14 +5531,14 @@ function renderLibraryCharacters() {
     <div class="char-grid">
       <div class="char-card char-create" onclick="showModal('create-character')">
         <div class="char-thumb char-create-thumb">
-          <div class="char-create-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
+          <div class="char-create-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
           <div class="char-create-title">创建角色</div>
           <div class="char-create-sub">定制你的专属 AI 角色</div>
         </div>
       </div>
       ${cards}
     </div>
-    ${!list.length ? '<div style="color:#666; padding:24px; text-align:center;">没有符合条件的角色</div>' : ''}
+    ${!list.length ? '<div style="color:#6c6e73; padding:24px; text-align:center;">没有符合条件的角色</div>' : ''}
   `;
 }
 
