@@ -642,16 +642,12 @@ function showModal(type, extra) {
         <button type="button" class="char-chip" data-value="senior" onclick="charModalPick(this)">老年</button>
       </div>
       <label>形象素材</label>
-      <div class="file-upload-zone" onclick="document.getElementById('import-file-input').click()"
+      <div class="file-upload-zone" id="char-upload-zone"
+           onclick="if(!this.classList.contains('has-file'))document.getElementById('import-file-input').click()"
            ondragover="event.preventDefault();this.style.borderColor='#6161ff';"
            ondragleave="this.style.borderColor='';"
-           ondrop="event.preventDefault();this.style.borderColor='';handleImportFiles(event.dataTransfer.files);">
-        <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="13" height="12" rx="2.5"/><path d="M15 10.5l6-3.5v10l-6-3.5"/></svg></div>
-        <strong>上传出镜视频或形象照</strong>
-        <div style="margin-top:4px;">建议上传 30 秒以上正面出镜视频，生成效果更佳</div>
-      </div>
-      <input type="file" id="import-file-input" multiple accept="video/*,image/*" style="display:none;" onchange="handleImportFiles(this.files)">
-      <div id="import-file-list" style="margin-top:12px;"></div>
+           ondrop="event.preventDefault();this.style.borderColor='';handleCharUpload(event.dataTransfer.files);"></div>
+      <input type="file" id="import-file-input" accept="video/*,image/*" style="display:none;" onchange="handleCharUpload(this.files)">
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="hideModal()">取消</button>
         <button class="btn btn-primary" onclick="doCreateCharacter()">创建</button>
@@ -659,6 +655,7 @@ function showModal(type, extra) {
       </div>
     `;
     window._importFiles = [];
+    renderCharUploadZone();
   }
 }
 
@@ -1356,6 +1353,50 @@ function doImportAsset() {
   libraryTab = 'assets';
   renderLibrary();
   toast(`素材包 "${name}" 已导入 (${files.length} 个文件)`);
+}
+
+// 角色弹窗上传区：对齐 video-clone demo 的 upload-zone 公式
+// （单文件；上传后同一个框虚线变实线，框内横排 图标+文件名/大小+移除）
+function charCameraSvg() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="13" height="12" rx="2.5"/><path d="M15 10.5l6-3.5v10l-6-3.5"/></svg>';
+}
+
+function handleCharUpload(fileList) {
+  if (!fileList || !fileList.length) return;
+  const f = fileList[0];
+  window._importFiles = [{ name: f.name, size: f.size }];
+  renderCharUploadZone();
+}
+
+function renderCharUploadZone() {
+  const zone = document.getElementById('char-upload-zone');
+  if (!zone) return;
+  const f = (window._importFiles || [])[0];
+  if (!f) {
+    zone.classList.remove('has-file');
+    zone.innerHTML = `
+      <div class="upload-icon">${charCameraSvg()}</div>
+      <strong>上传出镜视频或形象照</strong>
+      <div style="margin-top:4px;">建议上传 30 秒以上正面出镜视频，生成效果更佳</div>`;
+    return;
+  }
+  zone.classList.add('has-file');
+  zone.innerHTML = `
+    <div class="char-upload-preview">
+      ${charCameraSvg()}
+      <div class="char-upload-fileinfo">
+        <div class="char-upload-filename">${f.name}</div>
+        <div class="char-upload-meta">${formatFileSize(f.size)}</div>
+      </div>
+      <button type="button" class="char-upload-remove" onclick="event.stopPropagation();removeCharUpload()">移除</button>
+    </div>`;
+}
+
+function removeCharUpload() {
+  window._importFiles = [];
+  const input = document.getElementById('import-file-input');
+  if (input) input.value = '';
+  renderCharUploadZone();
 }
 
 function charModalPick(el) {
