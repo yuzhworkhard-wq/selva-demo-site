@@ -39,19 +39,19 @@ let libraryAssets = [
 // ethnicity: white(欧美白人)/black(非裔黑人)/east-asian(东亚)/south-asian(南亚东南亚)/latino(拉丁裔)/mena(中东北非)
 let libraryCharacters = [
   { id: 'lc-1', name: 'Chloe', gender: 'female', age: 'young', ethnicity: 'white', img: 'assets/characters/chloe.jpg', desc: '街头实拍 · 活力口播', creator: 'u1', scope: 'team', createdAt: '2026-04-02', fav: false },
-  { id: 'lc-2', name: 'Kai', gender: 'male', age: 'adult', ethnicity: 'east-asian', img: 'assets/characters/kai.jpg', desc: '白墙室内 · 亲和笑容', creator: 'u1', scope: 'team', createdAt: '2026-04-02', fav: true },
-  { id: 'lc-3', name: 'Elena', gender: 'female', age: 'young', ethnicity: 'white', img: 'assets/characters/elena.jpg', desc: '户外夕阳 · 生活感', creator: 'u1', scope: 'team', createdAt: '2026-03-30', fav: false },
-  { id: 'lc-4', name: 'Jonas', gender: 'male', age: 'adult', ethnicity: 'white', img: 'assets/characters/jonas.jpg', desc: '影棚灰底 · 品牌口播', creator: 'u1', scope: 'team', createdAt: '2026-03-30', fav: false },
-  { id: 'lc-5', name: 'Sarah', gender: 'female', age: 'adult', ethnicity: 'white', img: 'assets/characters/sarah.jpg', desc: '白底棚拍 · 轻松日常', creator: 'u2', scope: 'team', createdAt: '2026-03-26', fav: true },
-  { id: 'lc-6', name: 'Diego', gender: 'male', age: 'middle', ethnicity: 'latino', img: 'assets/characters/diego.jpg', desc: '书房场景 · 专业讲解', creator: 'u1', scope: 'team', createdAt: '2026-03-24', fav: false },
-  { id: 'lc-7', name: 'Mei', gender: 'female', age: 'adult', ethnicity: 'east-asian', img: 'assets/characters/mei.jpg', desc: '冷调影棚 · 时尚质感', creator: 'u2', scope: 'team', createdAt: '2026-03-22', fav: false },
-  { id: 'lc-8', name: 'Owen', gender: 'male', age: 'young', ethnicity: 'black', img: 'assets/characters/owen.jpg', desc: '咖啡馆 · 学生感测评', creator: 'u1', scope: 'team', createdAt: '2026-03-20', fav: false },
-  { id: 'lc-9', name: 'Freya', gender: 'female', age: 'young', ethnicity: 'white', img: 'assets/characters/freya.jpg', desc: '湖边外景 · 清新文艺', creator: 'u3', scope: 'team', createdAt: '2026-03-18', fav: false },
+  { id: 'lc-2', name: 'Kai', gender: 'male', age: 'adult', ethnicity: 'east-asian', img: 'assets/characters/kai.jpg', desc: '室内暖光 · 亲和笑容', creator: 'u1', scope: 'team', createdAt: '2026-04-02', fav: true },
+  { id: 'lc-3', name: 'Elena', gender: 'female', age: 'young', ethnicity: 'white', img: 'assets/characters/elena.jpg', desc: '白墙居家 · 生活感', creator: 'u1', scope: 'team', createdAt: '2026-03-30', fav: false },
+  { id: 'lc-4', name: 'Jonas', gender: 'male', age: 'adult', ethnicity: 'white', img: 'assets/characters/jonas.jpg', desc: '户外日光 · 清爽口播', creator: 'u1', scope: 'team', createdAt: '2026-03-30', fav: false },
+  { id: 'lc-5', name: 'Sarah', gender: 'female', age: 'adult', ethnicity: 'white', img: 'assets/characters/sarah.jpg', desc: '居家暖光 · 轻松日常', creator: 'u2', scope: 'team', createdAt: '2026-03-26', fav: true },
+  { id: 'lc-6', name: 'Diego', gender: 'male', age: 'middle', ethnicity: 'latino', img: 'assets/characters/diego.jpg', desc: '街区台阶 · 随性讲解', creator: 'u1', scope: 'team', createdAt: '2026-03-24', fav: false },
+  { id: 'lc-7', name: 'Mei', gender: 'female', age: 'adult', ethnicity: 'east-asian', img: 'assets/characters/mei.jpg', desc: '冷调光影 · 时尚质感', creator: 'u2', scope: 'team', createdAt: '2026-03-22', fav: false },
+  { id: 'lc-8', name: 'Owen', gender: 'male', age: 'young', ethnicity: 'black', img: 'assets/characters/owen.jpg', desc: '户外绿荫 · 学生感测评', creator: 'u1', scope: 'team', createdAt: '2026-03-20', fav: false },
+  { id: 'lc-9', name: 'Freya', gender: 'female', age: 'young', ethnicity: 'white', img: 'assets/characters/freya.jpg', desc: '暖光室内 · 清新文艺', creator: 'u3', scope: 'team', createdAt: '2026-03-18', fav: false },
   { id: 'lc-10', name: 'Victor', gender: 'male', age: 'middle', ethnicity: 'white', img: 'assets/characters/victor.jpg', desc: '办公室 · 商务精英', creator: 'u1', scope: 'team', createdAt: '2026-03-15', fav: false },
-  { id: 'lc-11', name: 'Zoe', gender: 'female', age: 'young', ethnicity: 'white', img: 'assets/characters/zoe.jpg', desc: '街拍全身 · 潮流穿搭', creator: 'u2', scope: 'team', createdAt: '2026-03-12', fav: false },
-  { id: 'lc-12', name: 'Walter', gender: 'male', age: 'senior', ethnicity: 'white', img: 'assets/characters/walter.jpg', desc: '素色棚拍 · 沉稳长辈', creator: 'u1', scope: 'team', createdAt: '2026-03-10', fav: false },
-  { id: 'lc-13', name: 'Priya', gender: 'female', age: 'young', ethnicity: 'south-asian', img: 'assets/characters/priya.jpg', desc: '红底棚拍 · 传统着装', creator: 'u2', scope: 'team', createdAt: '2026-03-08', fav: false },
-  { id: 'lc-14', name: 'Omar', gender: 'male', age: 'young', ethnicity: 'mena', img: 'assets/characters/omar.jpg', desc: '海边日光 · 街头随性', creator: 'u1', scope: 'team', createdAt: '2026-03-06', fav: false },
+  { id: 'lc-11', name: 'Zoe', gender: 'female', age: 'young', ethnicity: 'white', img: 'assets/characters/zoe.jpg', desc: '街拍暖光 · 潮流穿搭', creator: 'u2', scope: 'team', createdAt: '2026-03-12', fav: false },
+  { id: 'lc-12', name: 'Walter', gender: 'male', age: 'senior', ethnicity: 'white', img: 'assets/characters/walter.jpg', desc: '素色便装 · 沉稳长辈', creator: 'u1', scope: 'team', createdAt: '2026-03-10', fav: false },
+  { id: 'lc-13', name: 'Priya', gender: 'female', age: 'young', ethnicity: 'south-asian', img: 'assets/characters/priya.jpg', desc: '窗边居家 · 亲和分享', creator: 'u2', scope: 'team', createdAt: '2026-03-08', fav: false },
+  { id: 'lc-14', name: 'Omar', gender: 'male', age: 'young', ethnicity: 'mena', img: 'assets/characters/omar.jpg', desc: '城市街头 · 街头随性', creator: 'u1', scope: 'team', createdAt: '2026-03-06', fav: false },
 ];
 
 const FOLDER_WORKFLOW_REFS = {

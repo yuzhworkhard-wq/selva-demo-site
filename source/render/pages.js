@@ -5566,7 +5566,7 @@ function renderLibraryCharacters() {
       <span class="char-filter-label">年龄</span>${ageChips}
       <span class="char-filter-sep"></span>
       ${morePanel}
-      <button class="char-chip char-chip-fav ${charFavOnly ? 'active' : ''}" onclick="toggleCharFavOnly()">♥ 已收藏</button>
+      <button class="char-chip char-chip-fav ${charFavOnly ? 'active' : ''}" onclick="toggleCharFavOnly()">${charFavIcon(true)} 已收藏</button>
     </div>
     <div class="char-grid">
       <div class="char-card char-create" onclick="showModal('create-character')">

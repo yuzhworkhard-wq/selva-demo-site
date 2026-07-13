@@ -2126,41 +2126,42 @@
 
   /* ===== Character Library (角色库) — 对齐 video-clone demo 的 Creatify 系样式 ===== */
   .char-filter-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
-  .char-filter-label { font-size: 12px; color: #6c6e73; margin-right: 2px; }
+  .char-filter-label { font-size: 13px; color: #6c6e73; margin-right: 4px; }
   .char-filter-sep { width: 1px; height: 18px; background: #2b2d31; margin: 0 8px; }
-  .char-chip { padding: 6px 14px; border-radius: 8px; border: 1px solid #2b2d31; background: #1c1d1f; color: #a2a4a9; font-size: 12px; cursor: pointer; transition: all 180ms ease; font-family: inherit; }
+  .char-chip { padding: 9px 17px; border-radius: 9px; border: 1px solid #2b2d31; background: #1c1d1f; color: #a2a4a9; font-size: 13px; cursor: pointer; transition: all 180ms ease; font-family: inherit; }
   .char-chip:hover { border-color: #3a3d42; color: #f3f3f4; }
   .char-chip.active { background: rgba(97, 97, 255, 0.14); border-color: #6161ff; color: #7676ff; }
-  .char-chip-fav { margin-left: auto; }
+  .char-chip-fav { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; }
+  .char-chip-fav svg { width: 12px; height: 12px; flex-shrink: 0; }
   .char-more-wrap { position: relative; display: inline-flex; }
   .char-more-btn { display: inline-flex; align-items: center; gap: 6px; }
   .char-more-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
   .char-more-panel { position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; min-width: 330px; padding: 14px; background: #141515; border: 1px solid #2b2d31; border-radius: 12px; box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45); }
   .char-more-label { font-size: 12px; color: #6c6e73; margin-bottom: 10px; }
   .char-more-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px 14px; }
+  .char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 28px 20px; }
   .char-card { min-width: 0; }
-  .char-thumb { position: relative; aspect-ratio: 3 / 4; border-radius: 12px; overflow: hidden; background: #1c1d1f; border: 1px solid #2b2d31; transition: border-color 180ms ease; }
+  .char-thumb { position: relative; aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden; background: #1c1d1f; border: 1px solid #2b2d31; transition: border-color 180ms ease; }
   .char-card:hover .char-thumb { border-color: #3a3d42; }
   .char-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .25s ease; }
   .char-card:hover .char-thumb img { transform: scale(1.03); }
-  .char-name { margin-top: 8px; font-size: 12px; color: #a2a4a9; padding-left: 2px; }
-  .char-fav { position: absolute; right: 8px; bottom: 8px; width: 30px; height: 30px; border-radius: 50%; border: none; padding: 0; background: rgba(0, 0, 0, 0.55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 180ms ease, transform 180ms ease; }
+  .char-name { margin-top: 10px; font-size: 14px; color: #c6c8cc; padding-left: 2px; }
+  .char-fav { position: absolute; right: 10px; bottom: 10px; width: 34px; height: 34px; border-radius: 50%; border: none; padding: 0; background: rgba(0, 0, 0, 0.55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 180ms ease, transform 180ms ease; }
   .char-card:hover .char-fav { opacity: 1; }
   .char-fav:hover { transform: scale(1.12); background: rgba(0, 0, 0, 0.75); }
   .char-fav.faved { opacity: 1; }
-  .char-fav svg { width: 15px; height: 15px; display: block; }
+  .char-fav svg { width: 16px; height: 16px; display: block; }
   .char-thumb-placeholder { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: #1c1d1f; }
   .char-initial { font-size: 34px; font-weight: 600; color: #3a3d42; }
   .char-generating { font-size: 11px; color: #9d9dff; background: rgba(97, 97, 255, 0.14); border-radius: 6px; padding: 2px 8px; }
   .char-create { cursor: pointer; }
   .char-create-thumb { background: #1c1d1f; border: 1.5px dashed #3a3d42; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 12px; transition: all 180ms ease; }
   .char-create:hover .char-create-thumb { border-color: #6161ff; background: rgba(97, 97, 255, 0.14); }
-  .char-create-icon { width: 52px; height: 52px; border-radius: 8px; background: #26282c; border: 1px solid #2b2d31; color: #a2a4a9; display: flex; align-items: center; justify-content: center; transition: all 180ms ease; }
+  .char-create-icon { width: 60px; height: 60px; border-radius: 14px; background: #26282c; border: 1px solid #2b2d31; color: #a2a4a9; display: flex; align-items: center; justify-content: center; transition: all 180ms ease; }
   .char-create:hover .char-create-icon { color: #6161ff; border-color: #6161ff; }
-  .char-create-icon svg { width: 20px; height: 20px; }
-  .char-create-title { font-size: 14px; font-weight: 600; color: #f3f3f4; }
-  .char-create-sub { font-size: 11px; color: #6c6e73; }
+  .char-create-icon svg { width: 24px; height: 24px; }
+  .char-create-title { font-size: 16px; font-weight: 600; color: #f3f3f4; }
+  .char-create-sub { font-size: 12px; color: #6c6e73; }
   /* 创建角色弹窗（仅此弹窗内覆盖全站 modal 紫色系） */
   .char-modal-body label { color: #a2a4a9; }
   .char-modal-body input[type="text"] { background: #141515; border-color: #2b2d31; }
