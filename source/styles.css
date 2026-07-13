@@ -2131,8 +2131,14 @@
   .char-chip { padding: 9px 17px; border-radius: 9px; border: 1px solid #2b2d31; background: #1c1d1f; color: #a2a4a9; font-size: 13px; cursor: pointer; transition: all 180ms ease; font-family: inherit; }
   .char-chip:hover { border-color: #3a3d42; color: #f3f3f4; }
   .char-chip.active { background: rgba(97, 97, 255, 0.14); border-color: #6161ff; color: #7676ff; }
-  .char-chip-fav { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; }
-  .char-chip-fav svg { width: 12px; height: 12px; flex-shrink: 0; }
+  .char-seg { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; padding: 4px; background: #141515; border: 1px solid #2b2d31; border-radius: 12px; }
+  .char-seg-item { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 9px; background: transparent; color: #a2a4a9; font-size: 13px; cursor: pointer; font-family: inherit; transition: all 180ms ease; }
+  .char-seg-item:hover { color: #f3f3f4; }
+  .char-seg-item.active { background: #6161ff; color: #fff; }
+  .char-seg-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .char-seg-plus { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 7px; background: #26282c; color: #c6c8cc; cursor: pointer; transition: all 180ms ease; margin-right: 4px; flex-shrink: 0; }
+  .char-seg-plus:hover { background: #6161ff; color: #fff; }
+  .char-seg-plus svg { width: 14px; height: 14px; }
   .char-more-wrap { position: relative; display: inline-flex; }
   .char-more-btn { display: inline-flex; align-items: center; gap: 6px; }
   .char-more-btn svg { width: 14px; height: 14px; flex-shrink: 0; }

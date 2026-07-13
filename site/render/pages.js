@@ -5465,7 +5465,7 @@ function renderLibraryWorkflows() {
 let charGenderFilter = 'all';
 let charAgeFilter = 'all';
 let charEthnicityFilter = 'all';
-let charFavOnly = false;
+let charViewMode = 'all'; // all(全部角色)/fav(收藏夹)/mine(我的角色)
 let charMoreOpen = false;
 
 const CHAR_GENDER_LABELS = { female: '女性', male: '男性' };
@@ -5499,8 +5499,8 @@ function closeCharMoreOutside(e) {
   document.removeEventListener('click', closeCharMoreOutside);
   renderLibrary();
 }
-function toggleCharFavOnly() {
-  charFavOnly = !charFavOnly;
+function setCharViewMode(mode) {
+  charViewMode = mode;
   renderLibrary();
 }
 function toggleCharFav(charId) {
@@ -5524,7 +5524,8 @@ function renderLibraryCharacters() {
     (charGenderFilter === 'all' || c.gender === charGenderFilter) &&
     (charAgeFilter === 'all' || c.age === charAgeFilter) &&
     (charEthnicityFilter === 'all' || c.ethnicity === charEthnicityFilter) &&
-    (!charFavOnly || c.fav) &&
+    (charViewMode !== 'fav' || c.fav) &&
+    (charViewMode !== 'mine' || (c.scope === 'personal' && c.creator === currentUser.id)) &&
     (!q || c.name.toLowerCase().includes(q) || (c.desc || '').toLowerCase().includes(q))
   );
 
@@ -5566,7 +5567,12 @@ function renderLibraryCharacters() {
       <span class="char-filter-label">年龄</span>${ageChips}
       <span class="char-filter-sep"></span>
       ${morePanel}
-      <button class="char-chip char-chip-fav ${charFavOnly ? 'active' : ''}" onclick="toggleCharFavOnly()">${charFavIcon(true)} 已收藏</button>
+      <div class="char-seg">
+        <button class="char-seg-item ${charViewMode === 'all' ? 'active' : ''}" onclick="setCharViewMode('all')">全部角色</button>
+        <button class="char-seg-item ${charViewMode === 'fav' ? 'active' : ''}" onclick="setCharViewMode('fav')">${charFavIcon(false)} 收藏夹</button>
+        <button class="char-seg-item ${charViewMode === 'mine' ? 'active' : ''}" onclick="setCharViewMode('mine')">我的角色</button>
+        <button class="char-seg-plus" title="创建角色" onclick="showModal('create-character')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+      </div>
     </div>
     <div class="char-grid">
       <div class="char-card char-create" onclick="showModal('create-character')">
@@ -5578,7 +5584,7 @@ function renderLibraryCharacters() {
       </div>
       ${cards}
     </div>
-    ${!list.length ? '<div style="color:#6c6e73; padding:24px; text-align:center;">没有符合条件的角色</div>' : ''}
+    ${!list.length ? `<div style="color:#6c6e73; padding:24px; text-align:center;">${charViewMode === 'mine' ? '还没有你创建的角色，点右上角 + 新建一个' : '没有符合条件的角色'}</div>` : ''}
   `;
 }
 

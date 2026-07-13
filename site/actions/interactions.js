@@ -1427,7 +1427,7 @@ function doCreateCharacter() {
   charGenderFilter = 'all';
   charAgeFilter = 'all';
   charEthnicityFilter = 'all';
-  charFavOnly = false;
+  if (charViewMode === 'fav') charViewMode = 'all'; // 新角色未收藏，收藏夹里看不见
   charMoreOpen = false;
   renderLibrary();
   toast(`角色「${name}」已创建，形象生成中`);
