@@ -2190,3 +2190,6 @@
   /* ===== 视频克隆工具：内容区 iframe 蒙层（让出左侧 SELVA 侧栏；关闭只隐藏不销毁，保留未完成会话） ===== */
   .clone-tool-overlay { position: fixed; top: 0; right: 0; bottom: 0; left: 240px; z-index: 400; background: #0a0b0b; }
   .clone-tool-frame { display: block; width: 100%; height: 100%; border: 0; }
+
+  /* ===== 视频克隆弹窗全局化：子应用弹窗打开时，侧栏叠同款半透明遮罩（iframe 内遮罩只盖内容区） ===== */
+  .clone-sidebar-scrim { position: fixed; left: 0; top: 0; bottom: 0; width: 240px; z-index: 500; background: rgba(0, 0, 0, 0.55); }

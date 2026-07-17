@@ -1524,6 +1524,7 @@ function openCloneTool() {
   }
 }
 function hideCloneTool() {
+  setCloneSidebarScrim(false);
   const overlay = document.getElementById('cloneToolOverlay');
   if (!overlay || overlay.style.display === 'none') return;
   overlay.style.display = 'none';
@@ -1562,10 +1563,26 @@ function upsertCloneTask(meta) {
   if (badge) badge.textContent = String(MOCK_TASKS.filter(t => t.status === 'generating' || t.status === 'pending_confirm').length);
   if (currentPage === 'tasks') renderTaskCenter();
 }
+// 子应用弹窗开合：给平台侧栏叠同款半透明遮罩，让弹窗观感=全屏遮罩+全视口居中
+function setCloneSidebarScrim(open) {
+  let scrim = document.getElementById('cloneSidebarScrim');
+  if (open) {
+    if (!scrim) {
+      scrim = document.createElement('div');
+      scrim.id = 'cloneSidebarScrim';
+      scrim.className = 'clone-sidebar-scrim';
+      document.body.appendChild(scrim);
+    }
+    scrim.style.display = 'block';
+  } else if (scrim) {
+    scrim.style.display = 'none';
+  }
+}
 window.addEventListener('message', (e) => {
   if (!e.data) return;
   if (e.data.type === 'selva-clone-close') hideCloneTool();
   if (e.data.type === 'selva-clone-task' && e.data.task) upsertCloneTask(e.data.task);
+  if (e.data.type === 'selva-clone-modal') setCloneSidebarScrim(!!e.data.open);
 });
 // 蒙层只盖内容区、侧边栏保持可用：克隆打开时点侧边栏任意导航 = 切换走（隐藏保会话）
 document.addEventListener('click', (e) => {
