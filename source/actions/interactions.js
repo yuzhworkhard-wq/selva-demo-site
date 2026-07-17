@@ -1583,6 +1583,13 @@ window.addEventListener('message', (e) => {
   if (e.data.type === 'selva-clone-close') hideCloneTool();
   if (e.data.type === 'selva-clone-task' && e.data.task) upsertCloneTask(e.data.task);
   if (e.data.type === 'selva-clone-modal') setCloneSidebarScrim(!!e.data.open);
+  // 子应用视图切换（如任务详情→重新编辑回克隆流程）：侧栏/背景页同步到工具箱态
+  if (e.data.type === 'selva-clone-nav' && e.data.section === 'toolbox') {
+    if (typeof currentProject !== 'undefined' && currentProject && currentFolder) {
+      goPage('workspace');
+      setWorkspaceSection('toolbox');
+    }
+  }
 });
 // 蒙层只盖内容区、侧边栏保持可用：克隆打开时点侧边栏任意导航 = 切换走（隐藏保会话）
 document.addEventListener('click', (e) => {
