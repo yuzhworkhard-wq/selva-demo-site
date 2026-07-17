@@ -4959,9 +4959,11 @@ function renderTaskCenter() {
 }
 
 function openTaskDetail(taskId) {
+  const task = MOCK_TASKS.find(t => t.id === taskId);
+  // 视频克隆任务：详情是 clone/ 子应用里的对照视图（原视频⇄成片+提示词），不走平台详情页
+  if (task && task.isCloneTask) { openCloneTaskDetail(taskId); return; }
   currentTaskDetailId = taskId;
   _taskWfInitialized = false; // reset canvas state for new task
-  const task = MOCK_TASKS.find(t => t.id === taskId);
   currentTaskDetailNodeId = null;
   // Auto-focus pending-confirm node so user lands directly on the confirmation panel
   if (task && task.source === 'workflow' && task.workflowTemplate) {

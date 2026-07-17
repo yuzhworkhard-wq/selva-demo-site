@@ -1531,8 +1531,41 @@ function hideCloneTool() {
   const frame = overlay.querySelector('iframe');
   if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-clone-hide' }, '*');
 }
+// 任务中心点开克隆任务：详情在子应用内展示（原视频⇄成片对照+提示词）
+// 克隆任务必然由本次会话的 iframe 提交产生（数据在其内存里），故此时 iframe 一定已存在
+function openCloneTaskDetail(taskId) {
+  openCloneTool();
+  const overlay = document.getElementById('cloneToolOverlay');
+  const frame = overlay && overlay.querySelector('iframe');
+  if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-clone-open-task', id: taskId }, '*');
+}
+// 子应用上报的克隆任务（新建/状态更新）→ 任务中心列表行
+function upsertCloneTask(meta) {
+  const row = {
+    id: meta.id,
+    name: meta.name,
+    status: meta.status,   // generating | completed
+    source: 'toolbox',
+    toolName: '视频克隆',
+    product: '—',
+    outputSummary: meta.status === 'completed' ? '克隆视频 1 个' : '克隆视频 1 个（生成中）',
+    createdAt: meta.createdAt,
+    duration: meta.duration || '—',
+    outputTypes: ['video'],
+    ownerId: currentUser.id,
+    isCloneTask: true,
+  };
+  const idx = MOCK_TASKS.findIndex(t => t.id === meta.id);
+  if (idx >= 0) MOCK_TASKS[idx] = { ...MOCK_TASKS[idx], ...row };
+  else MOCK_TASKS.unshift(row);
+  const badge = document.getElementById('global-task-badge');
+  if (badge) badge.textContent = String(MOCK_TASKS.filter(t => t.status === 'generating' || t.status === 'pending_confirm').length);
+  if (currentPage === 'tasks') renderTaskCenter();
+}
 window.addEventListener('message', (e) => {
-  if (e.data && e.data.type === 'selva-clone-close') hideCloneTool();
+  if (!e.data) return;
+  if (e.data.type === 'selva-clone-close') hideCloneTool();
+  if (e.data.type === 'selva-clone-task' && e.data.task) upsertCloneTask(e.data.task);
 });
 // 蒙层只盖内容区、侧边栏保持可用：克隆打开时点侧边栏任意导航 = 切换走（隐藏保会话）
 document.addEventListener('click', (e) => {
