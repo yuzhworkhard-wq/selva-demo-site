@@ -1509,20 +1509,30 @@ function openToolDetail(toolId) {
 
 // ===== 视频克隆工具：clone/ 下的独立应用，全屏 iframe 承载 =====
 // 关闭只隐藏不销毁 iframe：中断退出的进度留在子应用里，再次打开由它弹「是否继续」
-function openCloneTool() {
+function ensureCloneFrame() {
   let overlay = document.getElementById('cloneToolOverlay');
   if (!overlay) {
     overlay = document.createElement('div');
     overlay.id = 'cloneToolOverlay';
     overlay.className = 'clone-tool-overlay';
+    overlay.style.display = 'none';
     overlay.innerHTML = '<iframe class="clone-tool-frame" src="clone/index.html?embed=1" title="视频克隆"></iframe>';
     document.body.appendChild(overlay);
-  } else {
-    overlay.style.display = 'block';
-    const frame = overlay.querySelector('iframe');
-    if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-clone-open' }, '*');
   }
+  return overlay;
 }
+function openCloneTool() {
+  const overlay = ensureCloneFrame();
+  overlay.style.display = 'block';
+  const frame = overlay.querySelector('iframe');
+  // 子应用尚在加载时消息会丢——无碍，它初始即处于打开态
+  if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-clone-open' }, '*');
+}
+// 页面空闲时预载克隆子应用（下载/挂载成本移到点击之前，点开即显示）
+window.addEventListener('load', () => {
+  const idle = window.requestIdleCallback || (fn => setTimeout(fn, 1200));
+  idle(() => ensureCloneFrame());
+});
 function hideCloneTool() {
   setCloneSidebarScrim(false);
   const overlay = document.getElementById('cloneToolOverlay');
