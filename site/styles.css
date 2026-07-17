@@ -2186,3 +2186,7 @@
   .char-upload-remove:hover { color: #ef4444; border-color: rgba(239, 68, 68, 0.4); }
   .char-modal-body .btn-primary { background: #6161ff; }
   .char-modal-body .btn-primary:hover { background: #7676ff; }
+
+  /* ===== 视频克隆工具：全屏 iframe 蒙层（关闭只隐藏不销毁，保留未完成会话） ===== */
+  .clone-tool-overlay { position: fixed; inset: 0; z-index: 400; background: #0a0b0b; }
+  .clone-tool-frame { display: block; width: 100%; height: 100%; border: 0; }

@@ -1502,9 +1502,33 @@ function toast(msg) {
 
 // ===== Tool Detail =====
 function openToolDetail(toolId) {
+  if (toolId === 'tool-clone') { openCloneTool(); return; }   // 视频克隆是整页应用，走全屏 iframe 不走详情页
   currentToolDetail = toolId;
   renderWorkspace();
 }
+
+// ===== 视频克隆工具：clone/ 下的独立应用，全屏 iframe 承载 =====
+// 关闭只隐藏不销毁 iframe：中断退出的进度留在子应用里，再次打开由它弹「是否继续」
+function openCloneTool() {
+  let overlay = document.getElementById('cloneToolOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'cloneToolOverlay';
+    overlay.className = 'clone-tool-overlay';
+    overlay.innerHTML = '<iframe class="clone-tool-frame" src="clone/index.html?embed=1" title="视频克隆"></iframe>';
+    document.body.appendChild(overlay);
+  } else {
+    overlay.style.display = 'block';
+    const frame = overlay.querySelector('iframe');
+    if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-clone-open' }, '*');
+  }
+}
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'selva-clone-close') {
+    const overlay = document.getElementById('cloneToolOverlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+});
 
 function closeToolDetail() {
   currentToolDetail = null;

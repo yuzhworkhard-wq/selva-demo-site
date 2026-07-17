@@ -108,6 +108,7 @@ const TOOLBOX_TOOLS = [
   { id: 'tool-extract', name: '文案提取', en: 'Script Extraction', icon: '✂️', category: 'content', desc: '从视频或图片中智能提取台词、字幕等文案' },
   { id: 'tool-voice', name: '配音优化', en: 'Voice Studio', icon: '🎙', category: 'content', desc: '将脚本台词转换为高保真语音，80+ 音色' },
   { id: 'tool-disclaimer', name: '添加警示语', en: 'Disclaimer Overlay', icon: '⚠️', category: 'content', desc: '为视频自动添加合规警示语文字' },
+  { id: 'tool-clone', name: '视频克隆', en: 'Video Clone', icon: '🧬', category: 'clone', desc: '上传一条参考视频，AI 自动拆解镜头、改写台词，生成目标地区的多语种克隆片' },
 ];
 
 const LANGUAGES = ['中文（简体）','英文','葡萄牙语（巴西）','西班牙语（哥伦比亚）','日语','韩语','法语','印尼语','越南语'];
