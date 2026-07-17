@@ -1523,12 +1523,22 @@ function openCloneTool() {
     if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-clone-open' }, '*');
   }
 }
+function hideCloneTool() {
+  const overlay = document.getElementById('cloneToolOverlay');
+  if (!overlay || overlay.style.display === 'none') return;
+  overlay.style.display = 'none';
+  // 同步告知子应用已被隐藏：暂停视频、标记关闭态（下次打开才会弹「是否继续」）
+  const frame = overlay.querySelector('iframe');
+  if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-clone-hide' }, '*');
+}
 window.addEventListener('message', (e) => {
-  if (e.data && e.data.type === 'selva-clone-close') {
-    const overlay = document.getElementById('cloneToolOverlay');
-    if (overlay) overlay.style.display = 'none';
-  }
+  if (e.data && e.data.type === 'selva-clone-close') hideCloneTool();
 });
+// 蒙层只盖内容区、侧边栏保持可用：克隆打开时点侧边栏任意导航 = 切换走（隐藏保会话）
+document.addEventListener('click', (e) => {
+  const overlay = document.getElementById('cloneToolOverlay');
+  if (overlay && overlay.style.display !== 'none' && !overlay.contains(e.target)) hideCloneTool();
+}, true);
 
 function closeToolDetail() {
   currentToolDetail = null;

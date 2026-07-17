@@ -574,7 +574,6 @@ function renderWorkspace() {
     } else {
       const contentTools = TOOLBOX_TOOLS.filter(t => t.category === 'content');
       const videoTools = TOOLBOX_TOOLS.filter(t => t.category === 'video');
-      const cloneTools = TOOLBOX_TOOLS.filter(t => t.category === 'clone');
       sectionHtml = `
         <div class="section-title">工具箱</div>
         <div style="margin-bottom:8px; font-size:12px; color:#666;">内容工具</div>
@@ -588,18 +587,8 @@ function renderWorkspace() {
             </div>`).join('')}
         </div>
         <div style="margin-bottom:8px; font-size:12px; color:#666;">视频生成工具</div>
-        <div class="tools-grid-new" style="margin-bottom:20px;">
-          ${videoTools.map(t => `
-            <div class="tool-card" onclick="openToolDetail('${t.id}')">
-              <div class="tc-icon">${t.icon}</div>
-              <div class="tc-name">${t.name}</div>
-              <div class="tc-en">${t.en}</div>
-              <div class="tc-desc">${t.desc}</div>
-            </div>`).join('')}
-        </div>
-        <div style="margin-bottom:8px; font-size:12px; color:#666;">克隆工具</div>
         <div class="tools-grid-new">
-          ${cloneTools.map(t => `
+          ${videoTools.map(t => `
             <div class="tool-card" onclick="openToolDetail('${t.id}')">
               <div class="tc-icon">${t.icon}</div>
               <div class="tc-name">${t.name}</div>
