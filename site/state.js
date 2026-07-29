@@ -24,7 +24,7 @@ function toggleProjectStar(projectId, event) {
   if (currentPage === 'folder') renderFolder();
 }
 let currentToolDetail = null; // track which tool detail is open
-let currentVideoToolModel = 'Grok';
+let currentVideoToolModel = 'seedance 2.0';   // = helpers.js 里的 DEFAULT_VIDEO_MODEL（本文件先加载，只能写字面量）
 let currentWorkflowTemplateId = null;
 let currentWorkflowNodeId = null;
 let currentTaskDetailId = null;

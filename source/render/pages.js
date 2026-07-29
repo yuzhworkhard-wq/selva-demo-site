@@ -194,31 +194,31 @@ const TASK_OWNER_BY_NAME = {
   '春季活动-多语言': 'u3',
   '消除游戏-脚本生成视频': 'u2',
   '口播视频-文案提取': 'u8',
-  '新品发布-Veo31': 'u6',
+  '新品发布-omni': 'u6',
   '消除游戏-清明节脚本': 'u4',
-  '春季营销-Grok短视频': 'u8',
+  '春季营销-grok短视频': 'u8',
   '赚钱App-五语言翻译': 'u10',
-  '品牌推广-Veo3.1首发': 'u8',
+  '品牌推广-omni首发': 'u8',
   '赚钱App-提现主题': 'u7',
   '消除游戏-双音色配音': 'u6',
   '春季营销-脚本视频联动': 'u8',
   '竞品-文案提取': 'u2',
-  '消除游戏-Grok批量': 'u6',
+  '消除游戏-grok批量': 'u6',
   '品牌推广-双语字幕': 'u8',
   '多语言投放-印尼脚本': 'u7',
   '多语言投放-葡西联动': 'u3',
   '春季营销-竞品理解': 'u6',
   '消除游戏-母亲节脚本': 'u4',
-  '赚钱App-Veo3.1测试': 'u10',
+  '赚钱App-omni测试': 'u10',
   '消除游戏-爆款模仿': 'u6',
   '品牌推广-旁白配音': 'u6',
   '春季营销-踏青主题': 'u8',
   '赚钱App-日语本地化': 'u10',
   '品牌推广-脚本视频联动': 'u8',
-  '春季营销-Grok补量': 'u6',
+  '春季营销-grok补量': 'u6',
   '海外竞品-文案提取': 'u3',
   '赚钱App-愚人节脚本': 'u7',
-  '消除游戏-Grok首测': 'u4',
+  '消除游戏-grok首测': 'u4',
   '春季营销-甜美配音': 'u8',
   '赚钱App-竞品视频理解': 'u3',
   '消除游戏-儿童节预热脚本': 'u4',
@@ -2579,7 +2579,7 @@ function buildStatsDistribution({ tasks }) {
 }
 
 function buildStatsModelDistribution({ tasks }) {
-  const MODEL_COLORS = { 'Grok': '#a78bfa', 'Veo 3.1': '#22d3ee' };
+  const MODEL_COLORS = { 'grok 1.5': '#a78bfa', 'seedance 2.0': '#f472b6', 'Sora 2': '#4ade80', 'Google omni': '#22d3ee' };
   const counts = new Map();
   tasks.forEach(t => { if (t.videoModel) counts.set(t.videoModel, (counts.get(t.videoModel) || 0) + 1); });
   const models = Array.from(counts.entries()).map(([name, count]) => ({
@@ -2590,7 +2590,7 @@ function buildStatsModelDistribution({ tasks }) {
     <div class="chart-card">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
         <div class="section-title" style="margin:0;">视频模型分布</div>
-        <span style="font-size:11px; color:#666;">仅统计调用 Grok / Veo 3.1 的任务</span>
+        <span style="font-size:11px; color:#666;">按任务实际调用的视频模型统计</span>
       </div>
       <div style="display:flex; flex-direction:column; gap:10px;">
         ${models.length ? models.map(m => {
@@ -3992,8 +3992,10 @@ function getTaskFilterFields() {
       id: 'task-filter-video-model',
       label: '生成模型',
       options: [
-        { value: 'Grok', label: 'Grok' },
-        { value: 'Veo 3.1', label: 'Veo 3.1' },
+        { value: 'grok 1.5', label: 'grok 1.5' },
+        { value: 'seedance 2.0', label: 'seedance 2.0' },
+        { value: 'Sora 2', label: 'Sora 2' },
+        { value: 'Google omni', label: 'Google omni' },
       ],
     },
   ];

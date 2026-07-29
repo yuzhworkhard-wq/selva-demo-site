@@ -1503,11 +1503,12 @@ function toast(msg) {
 // ===== Tool Detail =====
 function openToolDetail(toolId) {
   if (toolId === 'tool-clone') { openCloneTool(); return; }   // 视频克隆是整页应用，走全屏 iframe 不走详情页
+  if (toolId === 'tool-video') { openVideoGenTool(); return; } // 视频生成走 Prompt 裂变 modal 向导（利用同个 iframe 承载）
   currentToolDetail = toolId;
   renderWorkspace();
 }
 
-// ===== 视频克隆工具：clone/ 下的独立应用，全屏 iframe 承载 =====
+// ===== 视频克隆与生成工具：clone/ 下的独立应用，全屏 iframe 承载 =====
 // 关闭只隐藏不销毁 iframe：中断退出的进度留在子应用里，再次打开由它弹「是否继续」
 function ensureCloneFrame() {
   let overlay = document.getElementById('cloneToolOverlay');
@@ -1528,6 +1529,12 @@ function openCloneTool() {
   // 子应用尚在加载时消息会丢——无碍，它初始即处于打开态
   if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-clone-open' }, '*');
 }
+function openVideoGenTool() {
+  const overlay = ensureCloneFrame();
+  overlay.style.display = 'block';
+  const frame = overlay.querySelector('iframe');
+  if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-vgen-open' }, '*');
+}
 // 页面空闲时预载克隆子应用（下载/挂载成本移到点击之前，点开即显示）
 window.addEventListener('load', () => {
   const idle = window.requestIdleCallback || (fn => setTimeout(fn, 1200));
@@ -1542,24 +1549,34 @@ function hideCloneTool() {
   const frame = overlay.querySelector('iframe');
   if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-clone-hide' }, '*');
 }
-// 任务中心点开克隆任务：详情在子应用内展示（原视频⇄成片对照+提示词）
-// 克隆任务必然由本次会话的 iframe 提交产生（数据在其内存里），故此时 iframe 一定已存在
+// 任务中心点开克隆/生成任务：详情在子应用内展示（原视频⇄成片对照+提示词）
+// 任务必然由本次会话的 iframe 提交产生（数据在其内存里），故此时 iframe 一定已存在
 function openCloneTaskDetail(taskId) {
   openCloneTool();
   const overlay = document.getElementById('cloneToolOverlay');
   const frame = overlay && overlay.querySelector('iframe');
   if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-clone-open-task', id: taskId }, '*');
 }
-// 子应用上报的克隆任务（新建/状态更新）→ 任务中心列表行
+// 子应用上报的克隆/生成任务（新建/状态更新）→ 任务中心列表行
 function upsertCloneTask(meta) {
+  const isVGen = meta.toolName === '视频生成';
+  // 一批里可能只挂掉几条：failedCount/totalCount 由子应用逐条汇总后报上来
+  const failed = Number(meta.failedCount || 0);
+  const total = Number(meta.totalCount || 0);
+  const summary = {
+    completed: isVGen ? (total > 1 ? `视频生成完成 ${total} 条` : '视频生成完成') : '克隆视频 1 个',
+    partial: `${total} 条中 ${total - failed} 条成功、${failed} 条失败`,
+    failed: total > 1 ? `${total} 条全部生成失败` : '生成失败',
+  };
   const row = {
     id: meta.id,
     name: meta.name,
-    status: meta.status,   // generating | completed
+    status: meta.status,   // generating | completed | partial | failed
     source: 'toolbox',
-    toolName: '视频克隆',
+    toolName: meta.toolName || '视频克隆',
     product: '—',
-    outputSummary: meta.status === 'completed' ? '克隆视频 1 个' : '克隆视频 1 个（生成中）',
+    outputSummary: summary[meta.status]
+      || (isVGen ? '视频生成中' : '克隆视频 1 个（生成中）'),
     createdAt: meta.createdAt,
     duration: meta.duration || '—',
     outputTypes: ['video'],
@@ -1932,115 +1949,52 @@ function renderToolVideoModelSwitcher() {
 
 function renderToolVideoSettingsCard() {
   if (!WORKFLOW_VIDEO_MODEL_CONFIG[currentVideoToolModel]) {
-    currentVideoToolModel = 'Grok';
+    currentVideoToolModel = DEFAULT_VIDEO_MODEL;
   }
-  const modelConfig = WORKFLOW_VIDEO_MODEL_CONFIG[currentVideoToolModel];
+  const model = currentVideoToolModel;
+  const modelConfig = WORKFLOW_VIDEO_MODEL_CONFIG[model];
+  const option = TOOL_VIDEO_MODEL_OPTIONS.find(item => item.value === model);
+  const fixedDuration = modelConfig.durations.length === 1;
 
-  if (currentVideoToolModel === 'Grok') {
+  // 参考素材按模型能力出：该模型收几类、每类几个由 limits 决定，不收的那类根本不出现
+  const refFields = VIDEO_REF_KINDS.filter(kind => modelConfig.limits[kind.key] > 0).map(kind => {
+    const label = videoRefLabel(model, kind.key);
+    const max = modelConfig.limits[kind.key];
+    const required = kind.key === 'image' && modelConfig.imageRequired;
     return `
-      <div class="form-card">
-        <div class="form-card-title">🤖 视频生成 Agent 设置</div>
-        <div class="form-field">
-          <label>视频时长 <span class="required">*</span></label>
-          <div class="radio-btns">
-            ${modelConfig.durations.map((duration, index) => `<div class="radio-btn ${index === 0 ? 'active' : ''}" onclick="toggleRadioBtn(this)">${duration}</div>`).join('')}
-          </div>
+      <div class="form-field">
+        <label>${label}${required ? ' <span class="required">*</span>' : ''}</label>
+        <div class="file-upload-zone" onclick="toast('选择${label}（原型演示）')">
+          <div class="upload-icon">📎</div>
+          <strong>点击上传${label}</strong>
+          <div style="margin-top:4px;">最多 ${max} 个${required ? '；不上传首帧图无法生成' : ''}</div>
         </div>
-        <div class="form-field">
-          <label>参考图片</label>
-          <div class="file-upload-zone" onclick="toast('选择参考图片（原型演示）')">
-            <div class="upload-icon">🖼</div>
-            <strong>点击上传参考图片</strong>
-            <div style="margin-top:4px;">JPG / PNG，最大 10MB；作为视频起始帧参考</div>
-          </div>
-        </div>
-        <div class="form-field">
-          <label>视频描述 <span class="required">*</span></label>
-          <textarea placeholder="建议 50 ~ 300 字，英文效果最佳；描述视频画面内容、人物动作、场景氛围等..."></textarea>
-        </div>
-        <div class="form-field">
-          <label>画面比例 <span class="required">*</span></label>
-          <select>
-            ${modelConfig.ratios.map(ratio => `<option ${ratio === '9:16' ? 'selected' : ''}>${ratio}</option>`).join('')}
-          </select>
-        </div>
-        ${renderToolVideoCountField('tool-video-count', 1)}
       </div>
     `;
-  }
-
-  if (currentVideoToolModel === 'Veo 3.1') {
-    return `
-      <div class="form-card">
-        <div class="form-card-title">🎞 视频生成 Agent 设置</div>
-        <div class="form-field">
-          <label>视频时长 <span class="required">*</span></label>
-          <div class="radio-btns">
-            ${modelConfig.durations.map((duration, index) => `<div class="radio-btn ${index === 1 ? 'active' : ''}" onclick="toggleRadioBtn(this)">${duration}</div>`).join('')}
-          </div>
-        </div>
-        <div class="form-field">
-          <label>起始帧图片</label>
-          <div class="file-upload-zone" onclick="toast('选择起始帧图片（原型演示）')">
-            <strong>🖼 上传起始帧图片</strong>
-            <div style="margin-top:4px;">JPG / PNG，最大 10MB；指定视频第一帧画面</div>
-          </div>
-        </div>
-        <div class="form-field">
-          <label>结束帧图片</label>
-          <div class="file-upload-zone" onclick="toast('选择结束帧图片（原型演示）')">
-            <strong>🖼 上传结束帧图片</strong>
-            <div style="margin-top:4px;">与起始帧配合可精确控制视频开头和结尾</div>
-          </div>
-        </div>
-        <div class="form-field">
-          <label>参考图片</label>
-          <div class="file-upload-zone" onclick="toast('选择参考图片（原型演示）')">
-            <strong>🖼 上传参考图片</strong>
-            <div style="margin-top:4px;">作为整体视觉风格参考</div>
-          </div>
-        </div>
-        <div class="form-field">
-          <label>视频描述 <span class="required">*</span></label>
-          <textarea placeholder="建议 50 ~ 500 字，英文效果最佳；描述视频画面内容、场景、动作和氛围..."></textarea>
-        </div>
-        <div class="form-field">
-          <label>画面比例 <span class="required">*</span></label>
-          <select>
-            ${modelConfig.ratios.map(ratio => `<option ${ratio === '9:16' ? 'selected' : ''}>${ratio}</option>`).join('')}
-          </select>
-        </div>
-        ${renderToolVideoCountField('tool-video-count', 1)}
-      </div>
-    `;
-  }
+  }).join('');
 
   return `
     <div class="form-card">
-      <div class="form-card-title">🎬 视频生成 Agent 设置</div>
+      <div class="form-card-title">${option.icon} 视频生成 Agent 设置</div>
       <div class="form-field">
-        <label>参考图片</label>
-        <div class="file-upload-zone" onclick="toast('选择参考图片（原型演示）')">
-          <div class="upload-icon">🖼</div>
-          <strong>点击上传参考图片</strong>
-          <div style="margin-top:4px;">支持 JPG / PNG / WebP，最大 10MB</div>
+        <label>视频时长 <span class="required">*</span></label>
+        <div class="radio-btns">
+          ${modelConfig.durations.map((duration, index) => (fixedDuration
+            ? `<div class="radio-btn active" style="cursor:default;">${duration} 🔒</div>`
+            : `<div class="radio-btn ${index === 0 ? 'active' : ''}" onclick="toggleRadioBtn(this)">${duration}</div>`)).join('')}
         </div>
+        ${fixedDuration ? `<small>${model} 时长固定 ${modelConfig.durations[0]}，不可调整。</small>` : ''}
       </div>
+      ${refFields}
       <div class="form-field">
         <label>视频描述 <span class="required">*</span></label>
-        <textarea placeholder="描述你想要生成的视频内容，最多 2000 字..."></textarea>
+        <textarea placeholder="建议 50 ~ 300 字，英文效果最佳；描述视频画面内容、人物动作、场景氛围等..."></textarea>
       </div>
       <div class="form-field">
         <label>画面比例 <span class="required">*</span></label>
         <select>
           ${modelConfig.ratios.map(ratio => `<option ${ratio === '9:16' ? 'selected' : ''}>${ratio}</option>`).join('')}
         </select>
-      </div>
-      <div class="form-field">
-        <label>时长 <span class="required">*</span></label>
-        <div class="radio-btns">
-          ${modelConfig.durations.map((duration, index) => `<div class="radio-btn ${index === 1 ? 'active' : ''}" onclick="toggleRadioBtn(this)">${duration}</div>`).join('')}
-        </div>
       </div>
       ${renderToolVideoCountField('tool-video-count', 1)}
     </div>
@@ -2537,7 +2491,7 @@ function renderToolFormDisclaimer() {
 function renderToolFormGrok() {
   return _taskInfoCard({ showDescription: false }) + `
     <div class="form-card">
-      <div class="form-card-title">🤖 Grok 视频生成 Agent 设置</div>
+      <div class="form-card-title">🤖 grok 1.5 视频生成 Agent 设置</div>
       <div class="form-field">
         <label>视频时长 <span class="required">*</span></label>
         <div class="radio-btns">
@@ -2576,7 +2530,7 @@ function renderToolFormGrok() {
 function renderToolFormVeo() {
   return _taskInfoCard({ showDescription: false }) + `
     <div class="form-card">
-      <div class="form-card-title">🎞 Veo 3.1 视频生成 Agent 设置</div>
+      <div class="form-card-title">🎞 Google omni 视频生成 Agent 设置</div>
       <div class="form-field">
         <label>视频时长 <span class="required">*</span></label>
         <div class="radio-btns">
@@ -3485,12 +3439,12 @@ function getWfNodeConfigDefaults(node) {
     }
     if (variant === 'video') {
       return {
-        videoModel: 'Grok',
+        videoModel: DEFAULT_VIDEO_MODEL,
         referenceImage: '',
         startFrameImage: '',
         endFrameImage: '',
         videoDescription: '',
-        videoDuration: '10s',
+        videoDuration: WORKFLOW_VIDEO_MODEL_CONFIG[DEFAULT_VIDEO_MODEL].durations[0],
         ratio: '9:16',
         videoCount: 1
       };
@@ -3569,7 +3523,7 @@ function getWfNodeConfigDefaults(node) {
 
 function syncWfVideoState(state) {
   if (!WORKFLOW_VIDEO_MODEL_CONFIG[state.videoModel]) {
-    state.videoModel = 'Grok';
+    state.videoModel = DEFAULT_VIDEO_MODEL;
   }
   const modelConfig = WORKFLOW_VIDEO_MODEL_CONFIG[state.videoModel];
   if (!modelConfig.ratios.includes(state.ratio)) {
@@ -4018,39 +3972,40 @@ function renderWfNodeConfig(node, wt) {
         </div>
       `;
     } else if (variant === 'video') {
-      const modelConfig = WORKFLOW_VIDEO_MODEL_CONFIG[state.videoModel] || WORKFLOW_VIDEO_MODEL_CONFIG['Grok'];
+      const model = WORKFLOW_VIDEO_MODEL_CONFIG[state.videoModel] ? state.videoModel : DEFAULT_VIDEO_MODEL;
+      const modelConfig = WORKFLOW_VIDEO_MODEL_CONFIG[model];
       const durations = modelConfig.durations;
       const videoCount = Number(state.videoCount || 1);
 
       fields += `
         <div class="cfg-row">
           <div class="cfg-label">视频模型</div>
-          ${renderWfCardGroup(node.id, 'videoModel', [
-            { value: 'Grok', title: 'Grok', description: 'xAI，支持多时长' },
-            { value: 'Veo 3.1', title: 'Veo 3.1', description: 'Google，支持长视频' }
-          ], state.videoModel)}
+          ${renderWfCardGroup(node.id, 'videoModel', TOOL_VIDEO_MODEL_OPTIONS.map(option => ({
+            value: option.value, title: option.title, description: option.description
+          })), model)}
         </div>
         <div class="cfg-row">
           <div class="cfg-label">视频时长</div>
-          ${renderWfChipGroup(node.id, 'videoDuration', durations, state.videoDuration)}
+          ${durations.length > 1
+            ? renderWfChipGroup(node.id, 'videoDuration', durations, state.videoDuration)
+            : `<div class="cfg-chips"><div class="cfg-chip active" style="cursor:default;">${durations[0]} 🔒</div></div>
+               <small class="cfg-help">${model} 时长固定 ${durations[0]}，不可调整。</small>`}
         </div>
-        ${state.videoModel === 'Veo 3.1' ? `
-          <div class="cfg-row">
-            <div class="cfg-label">起始帧图片</div>
-            <div class="cfg-upload" onclick="toast('上传起始帧图片（原型演示）')">上传起始帧图片（JPG / PNG，最大 10MB）</div>
-          </div>
-          <div class="cfg-row">
-            <div class="cfg-label">结束帧图片</div>
-            <div class="cfg-upload" onclick="toast('上传结束帧图片（原型演示）')">上传结束帧图片（JPG / PNG，最大 10MB）</div>
-          </div>
-        ` : ''}
-        <div class="cfg-row">
-          <div class="cfg-label">参考图片</div>
-          <div class="cfg-upload" onclick="toast('上传参考图片（原型演示）')">${state.videoModel === 'Veo 3.1' ? '上传参考图片，作为整体视觉风格参考' : '上传后应用到视频生成，通常上传产品图或品牌素材'}</div>
-        </div>
+        ${VIDEO_REF_KINDS.filter(kind => modelConfig.limits[kind.key] > 0).map(kind => {
+          const label = videoRefLabel(model, kind.key);
+          const max = modelConfig.limits[kind.key];
+          const required = kind.key === 'image' && modelConfig.imageRequired;
+          return `
+            <div class="cfg-row">
+              <div class="cfg-label">${label}${required ? ' <span style="color:#f87171;">*</span>' : ''}</div>
+              <div class="cfg-upload" onclick="toast('上传${label}（原型演示）')">上传${label}，最多 ${max} 个</div>
+              ${required ? '<small class="cfg-help">该模型必须上传首帧图，否则节点无法生成。</small>' : ''}
+            </div>
+          `;
+        }).join('')}
         <div class="cfg-row">
           <div class="cfg-label">视频描述</div>
-          <textarea placeholder="${state.videoModel === 'Grok' ? '建议 50 ~ 300 字，英文效果最佳；描述视频画面内容、人物动作、场景氛围等...' : '建议 50 ~ 500 字，英文效果最佳；描述视频画面内容、场景、动作和氛围...'}" oninput="setWfCfgValue('${node.id}','videoDescription',this.value)">${escapeHtml(state.videoDescription || '')}</textarea>
+          <textarea placeholder="建议 50 ~ 300 字，英文效果最佳；描述视频画面内容、人物动作、场景氛围等..." oninput="setWfCfgValue('${node.id}','videoDescription',this.value)">${escapeHtml(state.videoDescription || '')}</textarea>
         </div>
         <div class="cfg-row">
           <div class="cfg-label">画面比例</div>

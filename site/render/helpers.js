@@ -102,7 +102,7 @@ function getWorkflowTemplateEdges(wt) {
 // ===== Toolbox Tools =====
 const TOOLBOX_TOOLS = [
   { id: 'tool-script', name: '脚本生成', en: 'Script Generation', icon: '📝', category: 'content', desc: '支持基于创意描述、分析报告或参考脚本批量生成广告脚本' },
-  { id: 'tool-video', name: '视频生成', en: 'Video Generation', icon: '🎥', category: 'video', desc: '统一入口切换 Grok、Veo 3.1 视频生成模型' },
+  { id: 'tool-video', name: '视频生成', en: 'Video Generation', icon: '🎥', category: 'video', desc: '统一入口切换 grok 1.5、seedance 2.0、Sora 2、Google omni 四种视频生成模型' },
   { id: 'tool-understand', name: '视频理解', en: 'Video Understanding', icon: '🔍', category: 'content', desc: 'AI 深度分析视频内容，输出风格解析和提示词' },
   { id: 'tool-translate', name: '文本翻译', en: 'Text Translation', icon: '🌐', category: 'content', desc: 'AI 多语言广告文案翻译，支持按目标语言配置市场语料与术语表' },
   { id: 'tool-extract', name: '文案提取', en: 'Script Extraction', icon: '✂️', category: 'content', desc: '从视频或图片中智能提取台词、字幕等文案' },
@@ -125,22 +125,55 @@ const GEMINI_BASE_MODELS = ['Gemini 2.5 Pro', 'Gemini 2.5 Flash'];
 const SCRIPT_KNOWLEDGE_BASE_OPTIONS = ['品牌知识库', '产品手册', '高转化历史脚本', '海外市场案例集'];
 const DISCLAIMER_LANGUAGES = ['中文（简体）', '英文', '葡萄牙语（巴西）', '西班牙语'];
 const BACKGROUND_MUSIC_STYLES = ['无', '轻快', '励志', '温暖'];
+// 各模型的时长与参考素材能力都不一样，规则集中在这里，工具箱与工作流节点共用一份：
+//   durations 只有一档 = 该模型时长固定，UI 出锁定态不给选；
+//   limits 里为 0 = 该模型不吃这类素材，入口置灰；imageRequired = 不传图直接不让生成。
 const WORKFLOW_VIDEO_MODEL_CONFIG = {
-  'Grok': {
-    label: 'Grok（xAI，支持多时长）',
-    durations: ['10s', '20s', '30s'],
-    ratios: ['9:16', '16:9', '1:1']
+  'grok 1.5': {
+    label: 'grok 1.5（xAI，固定 15s，必须上传首帧图）',
+    durations: ['15s'],
+    ratios: ['9:16', '16:9', '1:1'],
+    limits: { image: 1, video: 0, audio: 0 },
+    imageRequired: true,
+    imageLabel: '首帧图'
   },
-  'Veo 3.1': {
-    label: 'Veo 3.1（Google，支持长视频）',
-    durations: ['8s', '16s', '24s', '32s', '40s'],
-    ratios: ['9:16', '16:9']
+  'seedance 2.0': {
+    label: 'seedance 2.0（固定 15s，参考素材最全）',
+    durations: ['15s'],
+    ratios: ['9:16', '16:9', '1:1'],
+    limits: { image: 4, video: 3, audio: 1 }
+  },
+  'Sora 2': {
+    label: 'Sora 2（OpenAI，4s / 8s / 12s）',
+    durations: ['4s', '8s', '12s'],
+    ratios: ['9:16', '16:9'],
+    limits: { image: 1, video: 0, audio: 0 }
+  },
+  'Google omni': {
+    label: 'Google omni（固定 10s，可挂参考视频）',
+    durations: ['10s'],
+    ratios: ['9:16', '16:9'],
+    limits: { image: 4, video: 1, audio: 0 }
   }
 };
 const TOOL_VIDEO_MODEL_OPTIONS = [
-  { value: 'Grok', icon: '🤖', title: 'Grok', description: 'xAI，支持 10s / 20s / 30s' },
-  { value: 'Veo 3.1', icon: '🎞', title: 'Veo 3.1', description: 'Google，支持长视频' }
+  { value: 'grok 1.5', icon: '🤖', title: 'grok 1.5', description: 'xAI，固定 15s，必传首帧图' },
+  { value: 'seedance 2.0', icon: '🌊', title: 'seedance 2.0', description: '固定 15s，图 4 / 视频 3 / 音频 1' },
+  { value: 'Sora 2', icon: '🎬', title: 'Sora 2', description: 'OpenAI，4s / 8s / 12s，参考图 ≤ 1' },
+  { value: 'Google omni', icon: '✨', title: 'Google omni', description: '固定 10s，图 ≤ 4 / 视频 ≤ 1' }
 ];
+const DEFAULT_VIDEO_MODEL = 'seedance 2.0';   // 默认给限制最松的一档，进来就能直接配直接跑
+const VIDEO_REF_KINDS = [
+  { key: 'image', label: '参考图' },
+  { key: 'video', label: '参考视频' },
+  { key: 'audio', label: '参考音频' }
+];
+// grok 的图不是「参考」是视频第一帧，叫法跟着模型走
+function videoRefLabel(model, key) {
+  const cfg = WORKFLOW_VIDEO_MODEL_CONFIG[model];
+  if (key === 'image' && cfg && cfg.imageLabel) return cfg.imageLabel;
+  return VIDEO_REF_KINDS.find(k => k.key === key).label;
+}
 const VOICE_LIBRARY = [
   { id: 'cn', label: 'CN 中文 36 个', voices: ['青涩青年','精英青年','霸道青年','阳光少年','磁性男声','成熟男声','沉稳男声','活力男声','新闻男声','主持男声','温柔女声','甜美女性','少女','御姐','成熟女性','知性女性','电台女声','主持女声','温暖旁白','活力旁白','广告热卖','科技解说','国风女声','可爱童声'] },
   { id: 'us', label: 'US 英语 20 个', voices: ['Professional Male','Energetic Male','Young Male','Warm Male','Narrator Male','News Male','Professional Female','Casual Female','Bright Female','Elegant Female','Luxury Female','Friendly Female'] },
@@ -263,7 +296,7 @@ const MOCK_TASKS = [
     outputSummary: '脚本 3 条 待确认，视频待生成',
     createdAt: '2026-04-09 10:32',
     duration: '2 分 08 秒（已暂停）',
-    videoModel: 'Grok',
+    videoModel: 'grok 1.5',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     pendingConfirmNodeId: 'n3',
@@ -314,8 +347,9 @@ const MOCK_TASKS = [
         status: 'waiting',
         duration: '—',
         params: [
-          { label: '视频模型', value: 'Grok' },
-          { label: '视频时长', value: '20s' },
+          { label: '视频模型', value: 'grok 1.5' },
+          { label: '视频时长', value: '15s' },
+          { label: '首帧图', value: 'launch_first_frame.png' },
           { label: '画面比例', value: '9:16' },
           { label: '每条输入的生成数量', value: '1（上游 3 条脚本 × 1 = 总计 3 个视频）' }
         ],
@@ -390,7 +424,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260330-002',
     toolId: 'tool-video',
-    name: '消除游戏-Grok视频',
+    name: '消除游戏-grok视频',
     status: 'generating',
     source: 'toolbox',
     toolName: '视频生成',
@@ -398,19 +432,19 @@ const MOCK_TASKS = [
     outputSummary: '视频 1 个（生成中）',
     createdAt: '2026-03-30 15:01',
     duration: '—',
-    videoModel: 'Grok',
+    videoModel: 'grok 1.5',
     outputTypes: ['video'],
     detailSections: [
       {
         title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '消除游戏-Grok视频' }]
+        fields: [{ label: '任务名称', value: '消除游戏-grok视频' }]
       },
       {
         title: '视频生成 Agent 设置',
         fields: [
-          { label: '视频模型', value: 'Grok' },
-          { label: '视频时长', value: '20s' },
-          { label: '参考图片', value: 'starter_product.png' },
+          { label: '视频模型', value: 'grok 1.5' },
+          { label: '视频时长', value: '15s' },
+          { label: '首帧图', value: 'starter_product.png' },
           { label: '视频描述', value: 'A fast-paced vertical ad showing a young user receiving cash rewards in the app, bright UI close-ups, energetic pacing and celebratory reactions.' },
           { label: '画面比例', value: '9:16' },
           { label: '生成数量', value: '1' }
@@ -431,7 +465,7 @@ const MOCK_TASKS = [
     outputSummary: '脚本 9 条 + 视频 6 个',
     createdAt: '2026-03-30 10:15',
     duration: '8 分 42 秒',
-    videoModel: 'Veo 3.1',
+    videoModel: 'Google omni',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-4',
     workflowNodeDetails: {
@@ -504,8 +538,8 @@ const MOCK_TASKS = [
         status: 'completed',
         duration: '2 分 38 秒',
         params: [
-          { label: '视频模型', value: 'Veo 3.1' },
-          { label: '视频时长', value: '16s' },
+          { label: '视频模型', value: 'Google omni' },
+          { label: '视频时长', value: '10s' },
           { label: '画面比例', value: '9:16' },
           { label: '参考图片', value: 'spring_visual_pt.png' },
           { label: '每条输入的生成数量', value: '1（上游 3 条葡语脚本 × 1 = 总计 3 个视频）' }
@@ -558,8 +592,8 @@ const MOCK_TASKS = [
         status: 'completed',
         duration: '2 分 43 秒',
         params: [
-          { label: '视频模型', value: 'Veo 3.1' },
-          { label: '视频时长', value: '16s' },
+          { label: '视频模型', value: 'Google omni' },
+          { label: '视频时长', value: '10s' },
           { label: '画面比例', value: '9:16' },
           { label: '参考图片', value: 'spring_visual_es.png' },
           { label: '每条输入的生成数量', value: '1（上游 3 条西语脚本 × 1 = 总计 3 个视频）' }
@@ -611,7 +645,7 @@ const MOCK_TASKS = [
     outputSummary: '分析报告 1 份 + 脚本 3 条 + 视频 3 个',
     createdAt: '2026-03-29 16:30',
     duration: '12 分 05 秒',
-    videoModel: 'Grok',
+    videoModel: 'grok 1.5',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-3',
     workflowNodeDetails: {
@@ -682,8 +716,9 @@ const MOCK_TASKS = [
         status: 'completed',
         duration: '7 分 36 秒',
         params: [
-          { label: '视频模型', value: 'Grok' },
-          { label: '视频时长', value: '20s' },
+          { label: '视频模型', value: 'grok 1.5' },
+          { label: '视频时长', value: '15s' },
+          { label: '首帧图', value: 'cashout_first_frame.png' },
           { label: '画面比例', value: '9:16' },
           { label: '每条输入的生成数量', value: '1（上游 3 条脚本 × 1 = 总计 3 个视频）' }
         ],
@@ -846,7 +881,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260327-001',
     toolId: 'tool-video',
-    name: 'Veo3.1-测试视频',
+    name: 'Google omni-测试视频',
     status: 'failed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -854,21 +889,20 @@ const MOCK_TASKS = [
     outputSummary: '视频 2 个（1 成功 1 失败）',
     createdAt: '2026-03-27 17:00',
     duration: '5 分 20 秒',
-    videoModel: 'Veo 3.1',
+    videoModel: 'Google omni',
     outputTypes: ['video'],
     detailSections: [
       {
         title: '任务基本信息',
-        fields: [{ label: '任务名称', value: 'Veo3.1-测试视频' }]
+        fields: [{ label: '任务名称', value: 'Google omni-测试视频' }]
       },
       {
         title: '视频生成 Agent 设置',
         fields: [
-          { label: '视频模型', value: 'Veo 3.1' },
-          { label: '视频时长', value: '16s' },
-          { label: '起始帧图片', value: 'game_ui_start.png' },
-          { label: '结束帧图片', value: 'game_ui_end.png' },
+          { label: '视频模型', value: 'Google omni' },
+          { label: '视频时长', value: '10s' },
           { label: '参考图片', value: 'game_ui_ref.png' },
+          { label: '参考视频', value: 'game_ui_ref_clip.mp4' },
           { label: '视频描述', value: 'Generate a short 9:16 ad showing the gameplay loop, cash reward popup and a final CTA scene.' },
           { label: '画面比例', value: '9:16' },
           { label: '生成数量', value: '2' }
@@ -890,7 +924,7 @@ const MOCK_TASKS = [
     outputSummary: '脚本 3 条 + 视频 2 个（1 失败）',
     createdAt: '2026-03-26 10:00',
     duration: '15 分 30 秒',
-    videoModel: 'Grok',
+    videoModel: 'grok 1.5',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     workflowNodeDetails: {
@@ -941,8 +975,9 @@ const MOCK_TASKS = [
         status: 'failed',
         duration: '11 分 45 秒',
         params: [
-          { label: '视频模型', value: 'Grok' },
-          { label: '视频时长', value: '30s' },
+          { label: '视频模型', value: 'grok 1.5' },
+          { label: '视频时长', value: '15s' },
+          { label: '首帧图', value: 'puzzle_first_frame.png' },
           { label: '画面比例', value: '9:16' },
           { label: '每条输入的生成数量', value: '1（上游 3 条脚本 × 1 = 总计 3 个视频）' }
         ],
@@ -1017,7 +1052,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260327-102',
     toolId: 'tool-video',
-    name: '新品发布-Veo31',
+    name: '新品发布-omni',
     status: 'completed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -1025,21 +1060,20 @@ const MOCK_TASKS = [
     outputSummary: '视频 1 个',
     createdAt: '2026-03-27 13:25',
     duration: '5 分 08 秒',
-    videoModel: 'Veo 3.1',
+    videoModel: 'Google omni',
     outputTypes: ['video'],
     detailSections: [
       {
         title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '新品发布-Veo31' }]
+        fields: [{ label: '任务名称', value: '新品发布-omni' }]
       },
       {
         title: '视频生成 Agent 设置',
         fields: [
-          { label: '视频模型', value: 'Veo 3.1' },
-          { label: '视频时长', value: '16s' },
-          { label: '起始帧图片', value: 'start_frame.png' },
-          { label: '结束帧图片', value: 'end_frame.png' },
+          { label: '视频模型', value: 'Google omni' },
+          { label: '视频时长', value: '10s' },
           { label: '参考图片', value: 'style_reference.png' },
+          { label: '参考视频', value: 'launch_ref_clip.mp4' },
           { label: '视频描述', value: 'A premium product launch film with dramatic lighting, slow reveal shots and clean brand typography.' },
           { label: '画面比例', value: '16:9' },
           { label: '生成数量', value: '1' }
@@ -1099,7 +1133,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260413-002',
     toolId: 'tool-video',
-    name: '春季营销-Grok短视频',
+    name: '春季营销-grok短视频',
     status: 'completed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -1107,19 +1141,19 @@ const MOCK_TASKS = [
     outputSummary: '视频 2 个',
     createdAt: '2026-04-13 11:42',
     duration: '4 分 12 秒',
-    videoModel: 'Grok',
+    videoModel: 'grok 1.5',
     outputTypes: ['video'],
     detailSections: [
       {
         title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '春季营销-Grok短视频' }]
+        fields: [{ label: '任务名称', value: '春季营销-grok短视频' }]
       },
       {
         title: '视频生成 Agent 设置',
         fields: [
-          { label: '视频模型', value: 'Grok' },
+          { label: '视频模型', value: 'grok 1.5' },
           { label: '视频时长', value: '15s' },
-          { label: '参考图片', value: 'spring_visual_ref.png' },
+          { label: '首帧图', value: 'spring_visual_ref.png' },
           { label: '视频描述', value: 'A bright spring-themed vertical ad with cherry blossom transitions, energetic pacing and quick UI close-ups of the gameplay loop.' },
           { label: '画面比例', value: '9:16' },
           { label: '生成数量', value: '2' }
@@ -1182,7 +1216,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260413-004',
     toolId: 'tool-video',
-    name: '品牌推广-Veo3.1首发',
+    name: '品牌推广-omni首发',
     status: 'generating',
     source: 'toolbox',
     toolName: '视频生成',
@@ -1190,21 +1224,20 @@ const MOCK_TASKS = [
     outputSummary: '视频 1 个（生成中）',
     createdAt: '2026-04-13 16:30',
     duration: '—',
-    videoModel: 'Veo 3.1',
+    videoModel: 'Google omni',
     outputTypes: ['video'],
     detailSections: [
       {
         title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '品牌推广-Veo3.1首发' }]
+        fields: [{ label: '任务名称', value: '品牌推广-omni首发' }]
       },
       {
         title: '视频生成 Agent 设置',
         fields: [
-          { label: '视频模型', value: 'Veo 3.1' },
-          { label: '视频时长', value: '20s' },
-          { label: '起始帧图片', value: 'brand_intro_start.png' },
-          { label: '结束帧图片', value: 'brand_intro_end.png' },
+          { label: '视频模型', value: 'Google omni' },
+          { label: '视频时长', value: '10s' },
           { label: '参考图片', value: 'brand_style_ref.png' },
+          { label: '参考视频', value: 'brand_ref_clip.mp4' },
           { label: '视频描述', value: 'A premium brand reveal film with cinematic camera moves, soft lighting and crisp typography for the new flagship product.' },
           { label: '画面比例', value: '16:9' },
           { label: '生成数量', value: '1' }
@@ -1312,7 +1345,7 @@ const MOCK_TASKS = [
     outputSummary: '脚本 3 条 + 视频 3 个',
     createdAt: '2026-04-12 16:22',
     duration: '7 分 18 秒',
-    videoModel: 'Grok',
+    videoModel: 'grok 1.5',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     workflowNodeDetails: {
@@ -1363,8 +1396,9 @@ const MOCK_TASKS = [
         status: 'completed',
         duration: '4 分 32 秒',
         params: [
-          { label: '视频模型', value: 'Grok' },
+          { label: '视频模型', value: 'grok 1.5' },
           { label: '视频时长', value: '15s' },
+          { label: '首帧图', value: 'spring_first_frame.png' },
           { label: '画面比例', value: '9:16' },
           { label: '每条输入的生成数量', value: '1（上游 3 条脚本 × 1 = 总计 3 个视频）' }
         ],
@@ -1442,7 +1476,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260411-002',
     toolId: 'tool-video',
-    name: '消除游戏-Grok批量',
+    name: '消除游戏-grok批量',
     status: 'completed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -1450,19 +1484,19 @@ const MOCK_TASKS = [
     outputSummary: '视频 4 个',
     createdAt: '2026-04-11 14:36',
     duration: '8 分 22 秒',
-    videoModel: 'Grok',
+    videoModel: 'grok 1.5',
     outputTypes: ['video'],
     detailSections: [
       {
         title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '消除游戏-Grok批量' }]
+        fields: [{ label: '任务名称', value: '消除游戏-grok批量' }]
       },
       {
         title: '视频生成 Agent 设置',
         fields: [
-          { label: '视频模型', value: 'Grok' },
+          { label: '视频模型', value: 'grok 1.5' },
           { label: '视频时长', value: '15s' },
-          { label: '参考图片', value: 'gameplay_loop_ref.png' },
+          { label: '首帧图', value: 'gameplay_loop_ref.png' },
           { label: '视频描述', value: 'A high-energy mobile gameplay montage emphasising chain combos, cash reward popups and celebratory close-ups, optimised for short-form social.' },
           { label: '画面比例', value: '9:16' },
           { label: '生成数量', value: '4' }
@@ -1577,7 +1611,7 @@ const MOCK_TASKS = [
     outputSummary: '脚本 6 条 + 视频 4 个',
     createdAt: '2026-04-10 13:55',
     duration: '12 分 36 秒',
-    videoModel: 'Veo 3.1',
+    videoModel: 'Google omni',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-4',
     workflowNodeDetails: {
@@ -1648,8 +1682,8 @@ const MOCK_TASKS = [
         status: 'completed',
         duration: '3 分 36 秒',
         params: [
-          { label: '视频模型', value: 'Veo 3.1' },
-          { label: '视频时长', value: '20s' },
+          { label: '视频模型', value: 'Google omni' },
+          { label: '视频时长', value: '10s' },
           { label: '画面比例', value: '9:16' },
           { label: '参考图片', value: 'latam_visual_pt.png' },
           { label: '每条输入的生成数量', value: '1（上游 2 条葡语脚本 × 1 = 总计 2 个视频）' }
@@ -1700,8 +1734,8 @@ const MOCK_TASKS = [
         status: 'completed',
         duration: '3 分 28 秒',
         params: [
-          { label: '视频模型', value: 'Veo 3.1' },
-          { label: '视频时长', value: '20s' },
+          { label: '视频模型', value: 'Google omni' },
+          { label: '视频时长', value: '10s' },
           { label: '画面比例', value: '9:16' },
           { label: '参考图片', value: 'latam_visual_es.png' },
           { label: '每条输入的生成数量', value: '1（上游 2 条西语脚本 × 1 = 总计 2 个视频）' }
@@ -1828,7 +1862,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260408-002',
     toolId: 'tool-video',
-    name: '赚钱App-Veo3.1测试',
+    name: '赚钱App-omni测试',
     status: 'failed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -1836,21 +1870,20 @@ const MOCK_TASKS = [
     outputSummary: '视频 2 个（全部失败）',
     createdAt: '2026-04-08 13:25',
     duration: '4 分 48 秒',
-    videoModel: 'Veo 3.1',
+    videoModel: 'Google omni',
     outputTypes: ['video'],
     detailSections: [
       {
         title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '赚钱App-Veo3.1测试' }]
+        fields: [{ label: '任务名称', value: '赚钱App-omni测试' }]
       },
       {
         title: '视频生成 Agent 设置',
         fields: [
-          { label: '视频模型', value: 'Veo 3.1' },
-          { label: '视频时长', value: '20s' },
-          { label: '起始帧图片', value: 'cashout_start.png' },
-          { label: '结束帧图片', value: 'cashout_end.png' },
+          { label: '视频模型', value: 'Google omni' },
+          { label: '视频时长', value: '10s' },
           { label: '参考图片', value: 'app_ui_ref.png' },
+          { label: '参考视频', value: 'cashout_ref_clip.mp4' },
           { label: '视频描述', value: 'A vertical mobile ad showcasing the in-app withdraw flow, fast UI close-ups, cash counting animation and a confident CTA reveal.' },
           { label: '画面比例', value: '9:16' },
           { label: '生成数量', value: '2' }
@@ -1872,7 +1905,7 @@ const MOCK_TASKS = [
     outputSummary: '分析报告 1 份 + 脚本 3 条 + 视频 3 个',
     createdAt: '2026-04-08 16:42',
     duration: '9 分 04 秒',
-    videoModel: 'Grok',
+    videoModel: 'grok 1.5',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-3',
     workflowNodeDetails: {
@@ -1943,8 +1976,9 @@ const MOCK_TASKS = [
         status: 'completed',
         duration: '5 分 12 秒',
         params: [
-          { label: '视频模型', value: 'Grok' },
+          { label: '视频模型', value: 'grok 1.5' },
           { label: '视频时长', value: '15s' },
+          { label: '首帧图', value: 'puzzle_first_frame.png' },
           { label: '画面比例', value: '9:16' },
           { label: '每条输入的生成数量', value: '1（上游 3 条脚本 × 1 = 总计 3 个视频）' }
         ],
@@ -2066,7 +2100,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260405-001',
     toolId: 'tool-video',
-    name: '消除游戏-Veo3.1精修',
+    name: '消除游戏-omni精修',
     status: 'completed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -2074,21 +2108,20 @@ const MOCK_TASKS = [
     outputSummary: '视频 1 个',
     createdAt: '2026-04-05 10:45',
     duration: '5 分 18 秒',
-    videoModel: 'Veo 3.1',
+    videoModel: 'Google omni',
     outputTypes: ['video'],
     detailSections: [
       {
         title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '消除游戏-Veo3.1精修' }]
+        fields: [{ label: '任务名称', value: '消除游戏-omni精修' }]
       },
       {
         title: '视频生成 Agent 设置',
         fields: [
-          { label: '视频模型', value: 'Veo 3.1' },
-          { label: '视频时长', value: '16s' },
-          { label: '起始帧图片', value: 'puzzle_start.png' },
-          { label: '结束帧图片', value: 'puzzle_end.png' },
+          { label: '视频模型', value: 'Google omni' },
+          { label: '视频时长', value: '10s' },
           { label: '参考图片', value: 'puzzle_style_ref.png' },
+          { label: '参考视频', value: 'puzzle_ref_clip.mp4' },
           { label: '视频描述', value: 'A polished vertical mobile-game ad with cinematic lighting, slow-motion combo highlights and a clean CTA card on the final beat.' },
           { label: '画面比例', value: '9:16' },
           { label: '生成数量', value: '1' }
@@ -2153,7 +2186,7 @@ const MOCK_TASKS = [
     outputSummary: '脚本 3 条 待确认，视频待生成',
     createdAt: '2026-04-05 17:12',
     duration: '2 分 32 秒（已暂停）',
-    videoModel: 'Veo 3.1',
+    videoModel: 'Google omni',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     pendingConfirmNodeId: 'n3',
@@ -2204,8 +2237,8 @@ const MOCK_TASKS = [
         status: 'waiting',
         duration: '—',
         params: [
-          { label: '视频模型', value: 'Veo 3.1' },
-          { label: '视频时长', value: '16s' },
+          { label: '视频模型', value: 'Google omni' },
+          { label: '视频时长', value: '10s' },
           { label: '画面比例', value: '16:9' },
           { label: '每条输入的生成数量', value: '1（上游 3 条脚本 × 1 = 总计 3 个视频）' }
         ],
@@ -2279,7 +2312,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260403-002',
     toolId: 'tool-video',
-    name: '春季营销-Grok补量',
+    name: '春季营销-grok补量',
     status: 'completed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -2287,19 +2320,19 @@ const MOCK_TASKS = [
     outputSummary: '视频 3 个',
     createdAt: '2026-04-03 14:18',
     duration: '6 分 24 秒',
-    videoModel: 'Grok',
+    videoModel: 'grok 1.5',
     outputTypes: ['video'],
     detailSections: [
       {
         title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '春季营销-Grok补量' }]
+        fields: [{ label: '任务名称', value: '春季营销-grok补量' }]
       },
       {
         title: '视频生成 Agent 设置',
         fields: [
-          { label: '视频模型', value: 'Grok' },
+          { label: '视频模型', value: 'grok 1.5' },
           { label: '视频时长', value: '15s' },
-          { label: '参考图片', value: 'spring_visual_supplement.png' },
+          { label: '首帧图', value: 'spring_visual_supplement.png' },
           { label: '视频描述', value: 'A supplemental batch of bright spring-themed vertical ads matching the campaign style guide, with quick UI close-ups and energetic transitions.' },
           { label: '画面比例', value: '9:16' },
           { label: '生成数量', value: '3' }
@@ -2399,7 +2432,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260401-002',
     toolId: 'tool-video',
-    name: '消除游戏-Grok首测',
+    name: '消除游戏-grok首测',
     status: 'completed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -2407,20 +2440,20 @@ const MOCK_TASKS = [
     outputSummary: '视频 2 个',
     createdAt: '2026-04-01 15:48',
     duration: '4 分 02 秒',
-    videoModel: 'Grok',
+    videoModel: 'grok 1.5',
     outputTypes: ['video'],
     detailSections: [
       {
         title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '消除游戏-Grok首测' }]
+        fields: [{ label: '任务名称', value: '消除游戏-grok首测' }]
       },
       {
         title: '视频生成 Agent 设置',
         fields: [
-          { label: '视频模型', value: 'Grok' },
+          { label: '视频模型', value: 'grok 1.5' },
           { label: '视频时长', value: '15s' },
-          { label: '参考图片', value: 'puzzle_first_test.png' },
-          { label: '视频描述', value: 'An initial Grok test batch for the puzzle game, fast UI close-ups, combo effects and a concise CTA card.' },
+          { label: '首帧图', value: 'puzzle_first_test.png' },
+          { label: '视频描述', value: 'An initial grok 1.5 test batch for the puzzle game, fast UI close-ups, combo effects and a concise CTA card.' },
           { label: '画面比例', value: '9:16' },
           { label: '生成数量', value: '2' }
         ]
@@ -2528,9 +2561,9 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260414-102',
-    toolId: 'tool-video', name: '消除游戏-Grok竖版', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-04-14 13:15', duration: '4 分 28 秒', videoModel: 'Grok', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-Grok竖版' }] }],
+    toolId: 'tool-video', name: '消除游戏-grok竖版', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-04-14 13:15', duration: '4 分 28 秒', videoModel: 'grok 1.5', outputTypes: ['video'],
+    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-grok竖版' }] }],
     outputs: [
       { name: '消除_竖版_001.mp4', status: 'done', duration: '2 分 08 秒', actions: ['播放', '下载'] },
       { name: '消除_竖版_002.mp4', status: 'done', duration: '2 分 20 秒', actions: ['播放', '下载'] }
@@ -2550,9 +2583,9 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260413-202',
-    toolId: 'tool-video', name: '消除游戏-Veo3.1增长测试', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-04-13 14:00', duration: '6 分 14 秒', videoModel: 'Veo 3.1', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-Veo3.1增长测试' }] }],
+    toolId: 'tool-video', name: '消除游戏-omni增长测试', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-04-13 14:00', duration: '6 分 14 秒', videoModel: 'Google omni', outputTypes: ['video'],
+    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-omni增长测试' }] }],
     outputs: [
       { name: '增长_veo31_001.mp4', status: 'done', duration: '3 分 10 秒', actions: ['播放', '下载'] },
       { name: '增长_veo31_002.mp4', status: 'done', duration: '3 分 04 秒', actions: ['播放', '下载'] }
@@ -2561,7 +2594,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260412-201',
     name: '赚钱App-海外脚本视频', status: 'completed', source: 'workflow', toolName: '先生成脚本生成视频',
-    product: '赚钱App', outputSummary: '脚本 2 条 + 视频 2 个', createdAt: '2026-04-12 11:00', duration: '9 分 22 秒', videoModel: 'Grok', outputTypes: ['script', 'video'],
+    product: '赚钱App', outputSummary: '脚本 2 条 + 视频 2 个', createdAt: '2026-04-12 11:00', duration: '9 分 22 秒', videoModel: 'grok 1.5', outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     workflowNodeDetails: {
       n1: { status: 'completed', duration: '10 秒', params: [], outputs: [], outputSummary: '任务上下文已建立' },
@@ -2595,9 +2628,9 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260411-201',
-    toolId: 'tool-video', name: '消除游戏-Veo3.1增长A组', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '消除游戏', outputSummary: '视频 3 个', createdAt: '2026-04-11 09:45', duration: '9 分 06 秒', videoModel: 'Veo 3.1', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-Veo3.1增长A组' }] }],
+    toolId: 'tool-video', name: '消除游戏-omni增长A组', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '消除游戏', outputSummary: '视频 3 个', createdAt: '2026-04-11 09:45', duration: '9 分 06 秒', videoModel: 'Google omni', outputTypes: ['video'],
+    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-omni增长A组' }] }],
     outputs: [
       { name: '增长A_veo31_001.mp4', status: 'done', duration: '3 分 02 秒', actions: ['播放', '下载'] },
       { name: '增长A_veo31_002.mp4', status: 'done', duration: '2 分 58 秒', actions: ['播放', '下载'] },
@@ -2630,9 +2663,9 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260410-102',
-    toolId: 'tool-video', name: '赚钱App-Grok品牌视频', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '赚钱App', outputSummary: '视频 2 个', createdAt: '2026-04-10 14:20', duration: '5 分 02 秒', videoModel: 'Grok', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '赚钱App-Grok品牌视频' }] }],
+    toolId: 'tool-video', name: '赚钱App-grok品牌视频', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '赚钱App', outputSummary: '视频 2 个', createdAt: '2026-04-10 14:20', duration: '5 分 02 秒', videoModel: 'grok 1.5', outputTypes: ['video'],
+    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '赚钱App-grok品牌视频' }] }],
     outputs: [
       { name: '赚钱_grok_001.mp4', status: 'done', duration: '2 分 28 秒', actions: ['播放', '下载'] },
       { name: '赚钱_grok_002.mp4', status: 'done', duration: '2 分 34 秒', actions: ['播放', '下载'] }
@@ -2640,9 +2673,9 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260409-101',
-    toolId: 'tool-video', name: '消除游戏-Veo3.1品牌组', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-04-09 11:00', duration: '6 分 32 秒', videoModel: 'Veo 3.1', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-Veo3.1品牌组' }] }],
+    toolId: 'tool-video', name: '消除游戏-omni品牌组', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-04-09 11:00', duration: '6 分 32 秒', videoModel: 'Google omni', outputTypes: ['video'],
+    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-omni品牌组' }] }],
     outputs: [
       { name: '品牌组_veo31_001.mp4', status: 'done', duration: '3 分 18 秒', actions: ['播放', '下载'] },
       { name: '品牌组_veo31_002.mp4', status: 'done', duration: '3 分 14 秒', actions: ['播放', '下载'] }
@@ -2651,7 +2684,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260409-102',
     name: '春季营销-脚本视频快产', status: 'completed', source: 'workflow', toolName: '先生成脚本生成视频',
-    product: '春季营销', outputSummary: '脚本 3 条 + 视频 3 个', createdAt: '2026-04-09 15:30', duration: '8 分 04 秒', videoModel: 'Grok', outputTypes: ['script', 'video'],
+    product: '春季营销', outputSummary: '脚本 3 条 + 视频 3 个', createdAt: '2026-04-09 15:30', duration: '8 分 04 秒', videoModel: 'grok 1.5', outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     workflowNodeDetails: {
       n1: { status: 'completed', duration: '8 秒', params: [], outputs: [], outputSummary: '任务上下文已建立' },
@@ -2690,9 +2723,9 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260407-101',
-    toolId: 'tool-video', name: '品牌推广-Grok15s', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '品牌推广', outputSummary: '视频 2 个', createdAt: '2026-04-07 10:40', duration: '4 分 48 秒', videoModel: 'Grok', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '品牌推广-Grok15s' }] }],
+    toolId: 'tool-video', name: '品牌推广-grok 1.515s', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '品牌推广', outputSummary: '视频 2 个', createdAt: '2026-04-07 10:40', duration: '4 分 48 秒', videoModel: 'grok 1.5', outputTypes: ['video'],
+    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '品牌推广-grok 1.515s' }] }],
     outputs: [
       { name: '品牌_grok15s_001.mp4', status: 'done', duration: '2 分 18 秒', actions: ['播放', '下载'] },
       { name: '品牌_grok15s_002.mp4', status: 'done', duration: '2 分 30 秒', actions: ['播放', '下载'] }
@@ -2712,9 +2745,9 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260405-001',
-    toolId: 'tool-video', name: '消除游戏-Grok增长B组', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '消除游戏', outputSummary: '视频 3 个', createdAt: '2026-04-05 10:30', duration: '6 分 20 秒', videoModel: 'Grok', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-Grok增长B组' }] }],
+    toolId: 'tool-video', name: '消除游戏-grok增长B组', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '消除游戏', outputSummary: '视频 3 个', createdAt: '2026-04-05 10:30', duration: '6 分 20 秒', videoModel: 'grok 1.5', outputTypes: ['video'],
+    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-grok增长B组' }] }],
     outputs: [
       { name: '增长B_grok_001.mp4', status: 'done', duration: '2 分 04 秒', actions: ['播放', '下载'] },
       { name: '增长B_grok_002.mp4', status: 'done', duration: '2 分 06 秒', actions: ['播放', '下载'] },
@@ -2724,7 +2757,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260404-001',
     name: '品牌推广-增长组联动', status: 'completed', source: 'workflow', toolName: '先生成脚本生成视频',
-    product: '品牌推广', outputSummary: '脚本 2 条 + 视频 2 个', createdAt: '2026-04-04 13:00', duration: '10 分 18 秒', videoModel: 'Veo 3.1', outputTypes: ['script', 'video'],
+    product: '品牌推广', outputSummary: '脚本 2 条 + 视频 2 个', createdAt: '2026-04-04 13:00', duration: '10 分 18 秒', videoModel: 'Google omni', outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     workflowNodeDetails: {
       n1: { status: 'completed', duration: '9 秒', params: [], outputs: [], outputSummary: '任务上下文已建立' },
@@ -2759,9 +2792,9 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260402-001',
-    toolId: 'tool-video', name: '赚钱App-Grok海外版', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '赚钱App', outputSummary: '视频 2 个', createdAt: '2026-04-02 14:00', duration: '5 分 14 秒', videoModel: 'Grok', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '赚钱App-Grok海外版' }] }],
+    toolId: 'tool-video', name: '赚钱App-grok海外版', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '赚钱App', outputSummary: '视频 2 个', createdAt: '2026-04-02 14:00', duration: '5 分 14 秒', videoModel: 'grok 1.5', outputTypes: ['video'],
+    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '赚钱App-grok海外版' }] }],
     outputs: [
       { name: '海外_grok_001.mp4', status: 'done', duration: '2 分 32 秒', actions: ['播放', '下载'] },
       { name: '海外_grok_002.mp4', status: 'done', duration: '2 分 42 秒', actions: ['播放', '下载'] }
@@ -2780,9 +2813,9 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260331-101',
-    toolId: 'tool-video', name: '品牌推广-Veo3.1横版', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '品牌推广', outputSummary: '视频 1 个', createdAt: '2026-03-31 14:30', duration: '5 分 28 秒', videoModel: 'Veo 3.1', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '品牌推广-Veo3.1横版' }] }],
+    toolId: 'tool-video', name: '品牌推广-omni横版', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '品牌推广', outputSummary: '视频 1 个', createdAt: '2026-03-31 14:30', duration: '5 分 28 秒', videoModel: 'Google omni', outputTypes: ['video'],
+    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '品牌推广-omni横版' }] }],
     outputs: [
       { name: '品牌_veo31_横版.mp4', status: 'done', duration: '5 分 28 秒', actions: ['播放', '下载'] }
     ]
@@ -2800,9 +2833,9 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260328-101',
-    toolId: 'tool-video', name: '消除游戏-Grok增长测试', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-03-28 15:00', duration: '4 分 36 秒', videoModel: 'Grok', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-Grok增长测试' }] }],
+    toolId: 'tool-video', name: '消除游戏-grok增长测试', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-03-28 15:00', duration: '4 分 36 秒', videoModel: 'grok 1.5', outputTypes: ['video'],
+    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-grok增长测试' }] }],
     outputs: [
       { name: '增长测试_grok_001.mp4', status: 'done', duration: '2 分 14 秒', actions: ['播放', '下载'] },
       { name: '增长测试_grok_002.mp4', status: 'done', duration: '2 分 22 秒', actions: ['播放', '下载'] }
