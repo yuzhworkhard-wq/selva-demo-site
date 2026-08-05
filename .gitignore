@@ -1,2 +1,9 @@
 .DS_Store
+.superpowers/
 source/.superpowers/
+
+# 本地 agent 工具链配置，不随仓库发布
+.claude/
+.codex/
+.agents/
+.trellis/

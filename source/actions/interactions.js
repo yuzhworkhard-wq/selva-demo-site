@@ -1608,6 +1608,15 @@ function setCloneSidebarScrim(open) {
 window.addEventListener('message', (e) => {
   if (!e.data) return;
   if (e.data.type === 'selva-clone-close') hideCloneTool();
+  /* 子应用挂载完成后主动来要：种子「视频生成」任务的详情也在它那儿看，
+     而它的任务表是自己的内存，看不到平台 MOCK_TASKS。
+     由它开口而不是宿主在 iframe load 时抢着发——load 早于 React 挂上 message 监听，发了会丢。 */
+  if (e.data.type === 'selva-clone-ready') {
+    const frame = document.querySelector('#cloneToolOverlay iframe');
+    if (frame && frame.contentWindow) {
+      frame.contentWindow.postMessage({ type: 'selva-clone-seed', tasks: buildVGenTaskSeeds() }, '*');
+    }
+  }
   if (e.data.type === 'selva-clone-task' && e.data.task) upsertCloneTask(e.data.task);
   if (e.data.type === 'selva-clone-modal') setCloneSidebarScrim(!!e.data.open);
   // 子应用视图切换（如任务详情→重新编辑回克隆流程）：侧栏/背景页同步到工具箱态

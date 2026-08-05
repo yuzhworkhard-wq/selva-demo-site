@@ -102,7 +102,7 @@ function getWorkflowTemplateEdges(wt) {
 // ===== Toolbox Tools =====
 const TOOLBOX_TOOLS = [
   { id: 'tool-script', name: '脚本生成', en: 'Script Generation', icon: '📝', category: 'content', desc: '支持基于创意描述、分析报告或参考脚本批量生成广告脚本' },
-  { id: 'tool-video', name: '视频生成', en: 'Video Generation', icon: '🎥', category: 'video', desc: '统一入口切换 grok 1.5、seedance 2.0、Sora 2、Google omni 四种视频生成模型' },
+  { id: 'tool-video', name: '视频生成', en: 'Video Generation', icon: '🎥', category: 'video', desc: '一句话裂变多条广告视频，Seedance 2.0 三档 / Minimax H3 / Google omni 任选' },
   { id: 'tool-understand', name: '视频理解', en: 'Video Understanding', icon: '🔍', category: 'content', desc: 'AI 深度分析视频内容，输出风格解析和提示词' },
   { id: 'tool-translate', name: '文本翻译', en: 'Text Translation', icon: '🌐', category: 'content', desc: 'AI 多语言广告文案翻译，支持按目标语言配置市场语料与术语表' },
   { id: 'tool-extract', name: '文案提取', en: 'Script Extraction', icon: '✂️', category: 'content', desc: '从视频或图片中智能提取台词、字幕等文案' },
@@ -125,29 +125,35 @@ const GEMINI_BASE_MODELS = ['Gemini 2.5 Pro', 'Gemini 2.5 Flash'];
 const SCRIPT_KNOWLEDGE_BASE_OPTIONS = ['品牌知识库', '产品手册', '高转化历史脚本', '海外市场案例集'];
 const DISCLAIMER_LANGUAGES = ['中文（简体）', '英文', '葡萄牙语（巴西）', '西班牙语'];
 const BACKGROUND_MUSIC_STYLES = ['无', '轻快', '励志', '温暖'];
-// 各模型的时长与参考素材能力都不一样，规则集中在这里，工具箱与工作流节点共用一份：
+// 各模型的时长与参考素材能力都不一样，规则集中在这里，工作流的视频生成节点用这一份。
 //   durations 只有一档 = 该模型时长固定，UI 出锁定态不给选；
 //   limits 里为 0 = 该模型不吃这类素材，入口置灰；imageRequired = 不传图直接不让生成。
+// ⚠️ 必须与 apps/video-clone/src/VideoGenModal.jsx 里的 VIDEO_MODEL_CONFIG 保持同一份能力口径
+//    （那边是工具箱里的视频生成工具，同一批模型两处呈现，改一处就要改另一处）。
 const WORKFLOW_VIDEO_MODEL_CONFIG = {
-  'grok 1.5': {
-    label: 'grok 1.5（xAI，固定 15s，必须上传首帧图）',
-    durations: ['15s'],
-    ratios: ['9:16', '16:9', '1:1'],
-    limits: { image: 1, video: 0, audio: 0 },
-    imageRequired: true,
-    imageLabel: '首帧图'
-  },
-  'seedance 2.0': {
-    label: 'seedance 2.0（固定 15s，参考素材最全）',
+  'Seedance 2.0': {
+    label: 'Seedance 2.0（旗舰画质，固定 15s，参考素材最全）',
     durations: ['15s'],
     ratios: ['9:16', '16:9', '1:1'],
     limits: { image: 4, video: 3, audio: 1 }
   },
-  'Sora 2': {
-    label: 'Sora 2（OpenAI，4s / 8s / 12s）',
-    durations: ['4s', '8s', '12s'],
-    ratios: ['9:16', '16:9'],
-    limits: { image: 1, video: 0, audio: 0 }
+  'Seedance 2.0 Fast': {
+    label: 'Seedance 2.0 Fast（同等能力，出片更快）',
+    durations: ['15s'],
+    ratios: ['9:16', '16:9', '1:1'],
+    limits: { image: 4, video: 3, audio: 1 }
+  },
+  'Seedance 2.0 Mini': {
+    label: 'Seedance 2.0 Mini（最省额度，适合批量试错）',
+    durations: ['15s'],
+    ratios: ['9:16', '16:9', '1:1'],
+    limits: { image: 4, video: 3, audio: 1 }
+  },
+  'Minimax H3': {
+    label: 'Minimax H3（15s / 10s 可选，参考图最多 5 张）',
+    durations: ['15s', '10s'],
+    ratios: ['9:16', '16:9', '1:1'],
+    limits: { image: 5, video: 0, audio: 1 }
   },
   'Google omni': {
     label: 'Google omni（固定 10s，可挂参考视频）',
@@ -157,18 +163,19 @@ const WORKFLOW_VIDEO_MODEL_CONFIG = {
   }
 };
 const TOOL_VIDEO_MODEL_OPTIONS = [
-  { value: 'grok 1.5', icon: '🤖', title: 'grok 1.5', description: 'xAI，固定 15s，必传首帧图' },
-  { value: 'seedance 2.0', icon: '🌊', title: 'seedance 2.0', description: '固定 15s，图 4 / 视频 3 / 音频 1' },
-  { value: 'Sora 2', icon: '🎬', title: 'Sora 2', description: 'OpenAI，4s / 8s / 12s，参考图 ≤ 1' },
+  { value: 'Seedance 2.0', icon: '🌊', title: 'Seedance 2.0', description: '旗舰画质，图 4 / 视频 3 / 音频 1' },
+  { value: 'Seedance 2.0 Fast', icon: '⚡', title: 'Seedance 2.0 Fast', description: '同等能力，出片更快' },
+  { value: 'Seedance 2.0 Mini', icon: '🍃', title: 'Seedance 2.0 Mini', description: '最省额度，适合批量试错' },
+  { value: 'Minimax H3', icon: '🎯', title: 'Minimax H3', description: '15s / 10s 可选，参考图 ≤ 5' },
   { value: 'Google omni', icon: '✨', title: 'Google omni', description: '固定 10s，图 ≤ 4 / 视频 ≤ 1' }
 ];
-const DEFAULT_VIDEO_MODEL = 'seedance 2.0';   // 默认给限制最松的一档，进来就能直接配直接跑
+const DEFAULT_VIDEO_MODEL = 'Seedance 2.0';   // 默认给限制最松的一档，进来就能直接配直接跑
 const VIDEO_REF_KINDS = [
   { key: 'image', label: '参考图' },
   { key: 'video', label: '参考视频' },
   { key: 'audio', label: '参考音频' }
 ];
-// grok 的图不是「参考」是视频第一帧，叫法跟着模型走
+// 有的模型收的图不是「参考」是视频第一帧（配置里给 imageLabel），叫法跟着模型走
 function videoRefLabel(model, key) {
   const cfg = WORKFLOW_VIDEO_MODEL_CONFIG[model];
   if (key === 'image' && cfg && cfg.imageLabel) return cfg.imageLabel;
@@ -284,8 +291,166 @@ const WF_AGENT_VARIANT_OPTIONS = [
 ];
 const WF_DISCLAIMER_HISTORY_VIDEOS = ['品牌故事_v1.mp4', '品牌故事_v2.mp4', '新品发布_30s.mp4', 'product_intro_PT.mp4', 'product_intro_ES.mp4'];
 
+/* ===== 工具箱「视频生成」种子任务的详情数据 =====
+   这些任务的详情由 apps/video-clone 子应用渲染（跟工具新产出的任务同一个界面），
+   所以除了任务中心列表要的那几个字段外，还得把「用户当初写了什么、挂了哪些参考图、
+   出参怎么设的」补齐——子应用是拿不到平台 MOCK_TASKS 的，得由宿主在 iframe 就绪后喂进去。
+
+   这里只写**任务本身推导不出来的**部分；条数/逐条成败/模型/时间/耗时都从 MOCK_TASKS 的
+   outputs、videoModel、createdAt、duration 里推（buildVGenTaskSeeds），避免同一份事实存两处。
+   图片路径相对 clone/ 子应用（它的 public 里有 showcase/ 与 frames/）。 */
+const VGEN_TASK_SEEDS = {
+  'T-20260330-002': { sourceText: '年轻女生坐在客厅沙发上对镜头口播，手里举着手机展示消除游戏的连击画面，语气像跟朋友安利，自然手持拍摄感。', images: ['showcase/sarah.jpg'], aspect: '9:16', magic: 'auto' },
+  'T-20260327-001': { sourceText: '手机屏幕特写，展示消除游戏三消连击与金币结算界面，数字清晰醒目，节奏快。', images: ['frames/frame_03.jpg'], aspect: '9:16', magic: 'on' },
+  'T-20260327-102': { sourceText: '男主播在布置精致的书桌前介绍新品，双手拿起产品展示细节，语气专业冷静，暖光台灯加背景虚化。', images: ['showcase/jonas.jpg'], aspect: '16:9', magic: 'auto' },
+  'T-20260413-002': { sourceText: '春日户外，女生在花丛边对镜头讲春季活动福利，自然光通透，画面清新，节奏轻快。', images: ['showcase/freya.jpg', 'frames/frame_05.jpg'], aspect: '9:16', magic: 'auto' },
+  'T-20260413-004': { sourceText: '品牌新品首发短片：夜色霓虹街头，主角侧身走向镜头，冷调蓝紫光影，浅景深电影质感，镜头缓慢前推。', images: ['frames/frame_07.jpg'], aspect: '9:16', magic: 'off' },
+  'T-20260411-002': { sourceText: '素人女生在厨房一边做事一边扭头对镜头讲消除游戏体验，画面略带手持晃动，生活化不精致，像随手拍的真实分享。', images: ['showcase/mei.jpg', 'frames/frame_02.jpg'], aspect: '9:16', magic: 'on' },
+  'T-20260408-002': { sourceText: '街边 ATM 前，年轻女子手持手机面对镜头，介绍看短剧赚钱的 App，说「看一集就能到账」，真实手持拍摄感。', images: ['frames/frame_01.jpg'], aspect: '9:16', magic: 'auto' },
+  'T-20260405-001': { sourceText: '消除游戏精修版：棚拍硬光打在手机屏幕上，高对比明暗交界，镜头极慢推近，高级广告片质感。', images: ['frames/frame_04.jpg'], aspect: '9:16', magic: 'off' },
+  'T-20260403-002': { sourceText: '春季营销补量素材：女生在阳台自然光下手持产品讲使用感受，画面通透干净，中景带手势特写。', images: ['showcase/chloe.jpg'], aspect: '9:16', magic: 'auto' },
+  'T-20260401-002': { sourceText: '消除游戏首测素材：快节奏竖屏广告，年轻用户在 App 里拿到奖励，UI 特写明亮，反应夸张有感染力。', images: ['frames/frame_09.jpg'], aspect: '9:16', magic: 'on' },
+  'T-20260414-102': { sourceText: '竖版口播：女生在窗边柔光下中景讲解消除游戏玩法，双手自然比划，暖色调亲和氛围。', images: ['showcase/priya.jpg'], aspect: '9:16', magic: 'auto' },
+  'T-20260413-202': { sourceText: '增长测试素材：男生坐在车里举着手机自拍视角讲游戏体验，车窗外流动街景，光线自然。', images: ['showcase/owen.jpg'], aspect: '9:16', magic: 'on' },
+  'T-20260411-201': { sourceText: '增长 A 组：街头拦访路人，路人对着镜头惊讶地说出使用感受，背景是热闹商业街，手持跟拍纪实感。', images: ['showcase/diego.jpg'], aspect: '9:16', magic: 'on' },
+  'T-20260410-102': { sourceText: '赚钱 App 品牌片：女生看着手机屏幕露出惊喜表情，把到账页面举到镜头前，普通居家环境，真实感优先。', images: ['showcase/elena.jpg', 'frames/frame_04.jpg'], aspect: '9:16', magic: 'auto' },
+  'T-20260409-101': { sourceText: '品牌组素材：办公室场景，商务男性对镜头讲品牌主张，冷白光棚拍感，语速沉稳。', images: ['showcase/victor.jpg'], aspect: '16:9', magic: 'off' },
+  'T-20260407-101': { sourceText: '品牌推广 15s 短片：镜前上妆一边讲产品，镜面反射补光，特写与半身景交替，精致质感。', images: ['showcase/zoe.jpg'], aspect: '9:16', magic: 'auto' },
+  'T-20260402-001': { sourceText: '海外版素材：巴西街区台阶上，男主角随性讲解赚钱 App 的提现流程，市井烟火气，自然光手持拍摄。', images: ['showcase/omar.jpg', 'frames/frame_05.jpg'], aspect: '9:16', magic: 'on' },
+  'T-20260331-101': { sourceText: '品牌横版：温馨居家场景，模特在沙发上自然讲述产品体验，暖色调柔和光线，中景带手势互动。', images: ['frames/frame_02.jpg'], aspect: '16:9', magic: 'auto' },
+  'T-20260328-101': { sourceText: '增长基线素材：女生凑近镜头压低声音抛出一个悬念问题，随后转身指向身后屏幕上的游戏画面，暗调布光带戏剧感。', images: ['showcase/kai.jpg'], aspect: '9:16', magic: 'off' },
+
+  /* ── 裂变来的历史任务 ──
+     裂变是这个工具的主玩法（拿一条能打的片当底、只换一维再跑几条），
+     可任务中心里一条这样的任务都没有，用户点开只看到一墙「已完成」的首轮生成。
+     fanoutFrom 只声明三件事：从哪条任务的第几条裂的、点名变哪几维、基准读不读得出；
+     具体脚本和那 20 项基准取值由子应用按同一套规则算（fillSeedScripts）——
+     宿主拿不到 briefParser，硬写进来就是第三处副本。 */
+  'T-20260415-303': { sourceText: '赚钱 App 新一批投放：女生在便利店门口举着手机对镜头说刚提现到账，市井生活感，自然光手持拍摄。', images: ['showcase/elena.jpg'], aspect: '9:16', magic: 'on' },
+  'T-20260415-301': {
+    sourceText: '素人女生在厨房一边做事一边扭头对镜头讲消除游戏体验，画面略带手持晃动，生活化不精致，像随手拍的真实分享。',
+    images: ['showcase/mei.jpg'], aspect: '9:16', magic: 'on',
+    // 上一条（T-20260411-002）magic=on，各条脚本本来就不同，基准从文字里读得出，不用看片
+    fanoutFrom: { taskId: 'T-20260411-002', baseIndex: 1, steer: '只换个男女角色长相', varyKeys: ['character'] },
+  },
+  'T-20260415-302': {
+    sourceText: '消除游戏精修版：棚拍硬光打在手机屏幕上，高对比明暗交界，镜头极慢推近，高级广告片质感。',
+    images: ['frames/frame_04.jpg'], aspect: '9:16', magic: 'off',
+    // 基准那批（T-20260405-001）magic=off，N 条提示词逐字相同 → 必须先过视频理解反解基准
+    fanoutFrom: { taskId: 'T-20260405-001', baseIndex: 0, steer: '换个场景和光线试试', varyKeys: ['setting', 'lighting'], readBase: true },
+  },
+
+  /* ── 今天这一对：先生成 4 条，再从第 1 条裂变 4 条 ──
+     这是走一遍工具箱最典型的一串动作，也是演示裂变必看的一组对照（基准批 + 裂变批）。
+     写成种子是为了不必每次都从头点一遍才能看到详情。 */
+  'T-20260805-C01': {
+    sourceText: '看剧赚钱 App 的新一批投放素材：真人出镜口播，讲清楚看一集就能到账、随时可提现，画面里要出现提现到账页面。',
+    images: ['showcase/elena.jpg'], aspect: '9:16', magic: 'on',
+  },
+  'T-20260805-C02': {
+    sourceText: '看剧赚钱 App 的新一批投放素材：真人出镜口播，讲清楚看一集就能到账、随时可提现，画面里要出现提现到账页面。',
+    images: ['showcase/elena.jpg'], aspect: '9:16', magic: 'on',
+    // 基准批 magic=on，各条脚本本来就不同，基准从文字里读得出，不用先看片
+    fanoutFrom: { taskId: 'T-20260805-C01', baseIndex: 0, steer: '只换个男女角色长相', varyKeys: ['character'] },
+  },
+};
+// 平台的任务状态词汇 → 子应用的（平台没有 done，用 completed）
+const VGEN_STATUS_TO_SUBAPP = { completed: 'done', partial: 'partial', failed: 'failed', generating: 'generating' };
+const VGEN_FAIL_REASONS = [
+  { code: 'E4201', reason: '内容审核未通过：画面中出现疑似真实货币特写，触发金融类素材风控。', fix: '改写提示词，避免真实币种与到账金额特写，或改用示意图。' },
+  { code: 'E5013', reason: '参考素材解析失败：上传的参考图分辨率低于模型要求（最低 512×512）。', fix: '换一张更清晰的参考图后重新生成。' },
+];
+/* 把种子任务拼成子应用详情要的形状。逐条成败直接对齐 outputs——
+   任务中心列表说「2 条中 1 条失败」，点进详情就得是同一条挂掉，两个界面不能各说各的。 */
+function buildVGenTaskSeeds() {
+  const seeds = [];
+  MOCK_TASKS.forEach(task => {
+    const extra = VGEN_TASK_SEEDS[task.id];
+    if (!extra) return;
+    const outputs = task.outputs || [];
+    let failSeq = 0;
+    const variants = outputs.map(o => {
+      if (o.status === 'done') return { status: 'done' };
+      if (o.status === 'processing') return {};   // 生成中：不带状态，子应用按未完成处理
+      return { status: 'failed', fail: VGEN_FAIL_REASONS[failSeq++ % VGEN_FAIL_REASONS.length] };
+    });
+    const cfg = WORKFLOW_VIDEO_MODEL_CONFIG[task.videoModel];
+    seeds.push({
+      id: task.id,
+      name: task.name,
+      status: VGEN_STATUS_TO_SUBAPP[task.status] || 'done',
+      createdAt: task.createdAt,
+      duration: task.duration,
+      toolName: '视频生成',
+      model: task.videoModel,
+      aspect: extra.aspect,
+      outDuration: extra.outDuration || (cfg ? cfg.durations[0] : '15s'),
+      magic: extra.magic,
+      sourceText: extra.sourceText,
+      images: extra.images || [],
+      refVideos: extra.refVideos || [],
+      refAudios: extra.refAudios || [],
+      variants,
+      // 裂变来路：子应用据此按同一套规则补算脚本与基准取值
+      fanoutFrom: extra.fanoutFrom || null,
+      // demo 里所有成片都用同一段占位素材；生成中的任务还没有成片
+      videoUrl: 'test-clip.mp4',
+      cloneUrl: task.status === 'generating' ? null : 'test-clip.mp4',
+    });
+  });
+  return seeds;
+}
+
 // ===== Mock Tasks =====
 const MOCK_TASKS = [
+  /* 走一遍工具箱最典型的一串动作：先生成 4 条，再拿第 1 条裂变 4 条。
+     详情由 apps/video-clone 渲染，输入/参数见上面的 VGEN_TASK_SEEDS 同 id 条目。
+     两条都是「4 条里挂了第 3 条」——跟工具现跑一批时的失败规则一致，
+     列表说的和点进去看到的必须是同一条挂掉。 */
+  {
+    id: 'T-20260805-C02',
+    toolId: 'tool-video',
+    name: '视频生成 · 裂变 4 条',
+    status: 'partial',
+    source: 'toolbox',
+    toolName: '视频生成',
+    product: '—',
+    outputSummary: '4 条中 3 条成功、1 条失败',
+    createdAt: '2026-08-05 22:18',
+    duration: '2 分 47 秒',
+    videoModel: 'Seedance 2.0',
+    outputTypes: ['video'],
+    ownerId: 'u1',
+    isCloneTask: true,
+    outputs: [
+      { name: '赚钱_裂变人物_001.mp4', status: 'done', duration: '1 分 58 秒', actions: ['播放', '下载'] },
+      { name: '赚钱_裂变人物_002.mp4', status: 'done', duration: '1 分 55 秒', actions: ['播放', '下载'] },
+      { name: '赚钱_裂变人物_003.mp4', status: 'failed', duration: '—', actions: ['重试'] },
+      { name: '赚钱_裂变人物_004.mp4', status: 'done', duration: '1 分 52 秒', actions: ['播放', '下载'] }
+    ]
+  },
+  {
+    id: 'T-20260805-C01',
+    toolId: 'tool-video',
+    name: '视频生成 · 4 条',
+    status: 'partial',
+    source: 'toolbox',
+    toolName: '视频生成',
+    product: '—',
+    outputSummary: '4 条中 3 条成功、1 条失败',
+    createdAt: '2026-08-05 22:06',
+    duration: '2 分 47 秒',
+    videoModel: 'Seedance 2.0',
+    outputTypes: ['video'],
+    ownerId: 'u1',
+    isCloneTask: true,
+    outputs: [
+      { name: '赚钱_新批_001.mp4', status: 'done', duration: '1 分 57 秒', actions: ['播放', '下载'] },
+      { name: '赚钱_新批_002.mp4', status: 'done', duration: '1 分 54 秒', actions: ['播放', '下载'] },
+      { name: '赚钱_新批_003.mp4', status: 'failed', duration: '—', actions: ['重试'] },
+      { name: '赚钱_新批_004.mp4', status: 'done', duration: '1 分 51 秒', actions: ['播放', '下载'] }
+    ]
+  },
   {
     id: 'T-20260409-PC1',
     name: '新品发布-脚本确认',
@@ -296,7 +461,7 @@ const MOCK_TASKS = [
     outputSummary: '脚本 3 条 待确认，视频待生成',
     createdAt: '2026-04-09 10:32',
     duration: '2 分 08 秒（已暂停）',
-    videoModel: 'grok 1.5',
+    videoModel: 'Seedance 2.0',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     pendingConfirmNodeId: 'n3',
@@ -347,7 +512,7 @@ const MOCK_TASKS = [
         status: 'waiting',
         duration: '—',
         params: [
-          { label: '视频模型', value: 'grok 1.5' },
+          { label: '视频模型', value: 'Seedance 2.0' },
           { label: '视频时长', value: '15s' },
           { label: '首帧图', value: 'launch_first_frame.png' },
           { label: '画面比例', value: '9:16' },
@@ -424,7 +589,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260330-002',
     toolId: 'tool-video',
-    name: '消除游戏-grok视频',
+    name: '消除游戏-竖版口播',
     status: 'generating',
     source: 'toolbox',
     toolName: '视频生成',
@@ -432,27 +597,12 @@ const MOCK_TASKS = [
     outputSummary: '视频 1 个（生成中）',
     createdAt: '2026-03-30 15:01',
     duration: '—',
-    videoModel: 'grok 1.5',
+    videoModel: 'Seedance 2.0 Fast',
     outputTypes: ['video'],
-    detailSections: [
-      {
-        title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '消除游戏-grok视频' }]
-      },
-      {
-        title: '视频生成 Agent 设置',
-        fields: [
-          { label: '视频模型', value: 'grok 1.5' },
-          { label: '视频时长', value: '15s' },
-          { label: '首帧图', value: 'starter_product.png' },
-          { label: '视频描述', value: 'A fast-paced vertical ad showing a young user receiving cash rewards in the app, bright UI close-ups, energetic pacing and celebratory reactions.' },
-          { label: '画面比例', value: '9:16' },
-          { label: '生成数量', value: '1' }
-        ]
-      }
-    ],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '消除游戏_grok_001.mp4', status: 'processing', duration: '进行中', actions: ['播放', '下载'] }
+      { name: '消除游戏_竖版_001.mp4', status: 'processing', duration: '进行中', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -645,7 +795,7 @@ const MOCK_TASKS = [
     outputSummary: '分析报告 1 份 + 脚本 3 条 + 视频 3 个',
     createdAt: '2026-03-29 16:30',
     duration: '12 分 05 秒',
-    videoModel: 'grok 1.5',
+    videoModel: 'Seedance 2.0',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-3',
     workflowNodeDetails: {
@@ -716,7 +866,7 @@ const MOCK_TASKS = [
         status: 'completed',
         duration: '7 分 36 秒',
         params: [
-          { label: '视频模型', value: 'grok 1.5' },
+          { label: '视频模型', value: 'Seedance 2.0' },
           { label: '视频时长', value: '15s' },
           { label: '首帧图', value: 'cashout_first_frame.png' },
           { label: '画面比例', value: '9:16' },
@@ -881,37 +1031,22 @@ const MOCK_TASKS = [
   {
     id: 'T-20260327-001',
     toolId: 'tool-video',
-    name: 'Google omni-测试视频',
-    status: 'failed',
+    name: '消除游戏-模型测试',
+    // 2 个产出里 1 成 1 败＝部分完成；原来写 failed 与自己的 outputSummary、与详情里的逐条状态都对不上
+    status: 'partial',
     source: 'toolbox',
     toolName: '视频生成',
     product: '消除游戏',
     outputSummary: '视频 2 个（1 成功 1 失败）',
     createdAt: '2026-03-27 17:00',
     duration: '5 分 20 秒',
-    videoModel: 'Google omni',
+    videoModel: 'Seedance 2.0 Fast',
     outputTypes: ['video'],
-    detailSections: [
-      {
-        title: '任务基本信息',
-        fields: [{ label: '任务名称', value: 'Google omni-测试视频' }]
-      },
-      {
-        title: '视频生成 Agent 设置',
-        fields: [
-          { label: '视频模型', value: 'Google omni' },
-          { label: '视频时长', value: '10s' },
-          { label: '参考图片', value: 'game_ui_ref.png' },
-          { label: '参考视频', value: 'game_ui_ref_clip.mp4' },
-          { label: '视频描述', value: 'Generate a short 9:16 ad showing the gameplay loop, cash reward popup and a final CTA scene.' },
-          { label: '画面比例', value: '9:16' },
-          { label: '生成数量', value: '2' }
-        ]
-      }
-    ],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: 'veo31_001.mp4', status: 'done', duration: '2 分 11 秒', actions: ['播放', '下载'] },
-      { name: 'veo31_002.mp4', status: 'failed', duration: '3 分 09 秒', actions: ['播放', '下载'] }
+      { name: '模型测试_001.mp4', status: 'done', duration: '2 分 11 秒', actions: ['播放', '下载'] },
+      { name: '模型测试_002.mp4', status: 'failed', duration: '3 分 09 秒', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -924,7 +1059,7 @@ const MOCK_TASKS = [
     outputSummary: '脚本 3 条 + 视频 2 个（1 失败）',
     createdAt: '2026-03-26 10:00',
     duration: '15 分 30 秒',
-    videoModel: 'grok 1.5',
+    videoModel: 'Minimax H3',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     workflowNodeDetails: {
@@ -975,7 +1110,7 @@ const MOCK_TASKS = [
         status: 'failed',
         duration: '11 分 45 秒',
         params: [
-          { label: '视频模型', value: 'grok 1.5' },
+          { label: '视频模型', value: 'Minimax H3' },
           { label: '视频时长', value: '15s' },
           { label: '首帧图', value: 'puzzle_first_frame.png' },
           { label: '画面比例', value: '9:16' },
@@ -1052,7 +1187,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260327-102',
     toolId: 'tool-video',
-    name: '新品发布-omni',
+    name: '新品发布-首发短片',
     status: 'completed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -1062,26 +1197,10 @@ const MOCK_TASKS = [
     duration: '5 分 08 秒',
     videoModel: 'Google omni',
     outputTypes: ['video'],
-    detailSections: [
-      {
-        title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '新品发布-omni' }]
-      },
-      {
-        title: '视频生成 Agent 设置',
-        fields: [
-          { label: '视频模型', value: 'Google omni' },
-          { label: '视频时长', value: '10s' },
-          { label: '参考图片', value: 'style_reference.png' },
-          { label: '参考视频', value: 'launch_ref_clip.mp4' },
-          { label: '视频描述', value: 'A premium product launch film with dramatic lighting, slow reveal shots and clean brand typography.' },
-          { label: '画面比例', value: '16:9' },
-          { label: '生成数量', value: '1' }
-        ]
-      }
-    ],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '新品发布_veo31_001.mp4', status: 'done', duration: '5 分 08 秒', actions: ['播放', '下载'] }
+      { name: '新品发布_首发_001.mp4', status: 'done', duration: '5 分 08 秒', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -1133,7 +1252,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260413-002',
     toolId: 'tool-video',
-    name: '春季营销-grok短视频',
+    name: '春季营销-短视频',
     status: 'completed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -1141,28 +1260,13 @@ const MOCK_TASKS = [
     outputSummary: '视频 2 个',
     createdAt: '2026-04-13 11:42',
     duration: '4 分 12 秒',
-    videoModel: 'grok 1.5',
+    videoModel: 'Seedance 2.0',
     outputTypes: ['video'],
-    detailSections: [
-      {
-        title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '春季营销-grok短视频' }]
-      },
-      {
-        title: '视频生成 Agent 设置',
-        fields: [
-          { label: '视频模型', value: 'grok 1.5' },
-          { label: '视频时长', value: '15s' },
-          { label: '首帧图', value: 'spring_visual_ref.png' },
-          { label: '视频描述', value: 'A bright spring-themed vertical ad with cherry blossom transitions, energetic pacing and quick UI close-ups of the gameplay loop.' },
-          { label: '画面比例', value: '9:16' },
-          { label: '生成数量', value: '2' }
-        ]
-      }
-    ],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '春季_grok_001.mp4', status: 'done', duration: '2 分 02 秒', actions: ['播放', '下载'] },
-      { name: '春季_grok_002.mp4', status: 'done', duration: '2 分 10 秒', actions: ['播放', '下载'] }
+      { name: '春季_短视频_001.mp4', status: 'done', duration: '2 分 02 秒', actions: ['播放', '下载'] },
+      { name: '春季_短视频_002.mp4', status: 'done', duration: '2 分 10 秒', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -1216,7 +1320,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260413-004',
     toolId: 'tool-video',
-    name: '品牌推广-omni首发',
+    name: '品牌推广-首发',
     status: 'generating',
     source: 'toolbox',
     toolName: '视频生成',
@@ -1224,28 +1328,12 @@ const MOCK_TASKS = [
     outputSummary: '视频 1 个（生成中）',
     createdAt: '2026-04-13 16:30',
     duration: '—',
-    videoModel: 'Google omni',
+    videoModel: 'Minimax H3',
     outputTypes: ['video'],
-    detailSections: [
-      {
-        title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '品牌推广-omni首发' }]
-      },
-      {
-        title: '视频生成 Agent 设置',
-        fields: [
-          { label: '视频模型', value: 'Google omni' },
-          { label: '视频时长', value: '10s' },
-          { label: '参考图片', value: 'brand_style_ref.png' },
-          { label: '参考视频', value: 'brand_ref_clip.mp4' },
-          { label: '视频描述', value: 'A premium brand reveal film with cinematic camera moves, soft lighting and crisp typography for the new flagship product.' },
-          { label: '画面比例', value: '16:9' },
-          { label: '生成数量', value: '1' }
-        ]
-      }
-    ],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '品牌_veo31_001.mp4', status: 'processing', duration: '进行中', actions: ['播放', '下载'] }
+      { name: '品牌_首发_001.mp4', status: 'processing', duration: '进行中', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -1345,7 +1433,7 @@ const MOCK_TASKS = [
     outputSummary: '脚本 3 条 + 视频 3 个',
     createdAt: '2026-04-12 16:22',
     duration: '7 分 18 秒',
-    videoModel: 'grok 1.5',
+    videoModel: 'Seedance 2.0 Mini',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     workflowNodeDetails: {
@@ -1396,7 +1484,7 @@ const MOCK_TASKS = [
         status: 'completed',
         duration: '4 分 32 秒',
         params: [
-          { label: '视频模型', value: 'grok 1.5' },
+          { label: '视频模型', value: 'Seedance 2.0 Mini' },
           { label: '视频时长', value: '15s' },
           { label: '首帧图', value: 'spring_first_frame.png' },
           { label: '画面比例', value: '9:16' },
@@ -1476,7 +1564,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260411-002',
     toolId: 'tool-video',
-    name: '消除游戏-grok批量',
+    name: '消除游戏-批量裂变',
     status: 'completed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -1484,30 +1572,62 @@ const MOCK_TASKS = [
     outputSummary: '视频 4 个',
     createdAt: '2026-04-11 14:36',
     duration: '8 分 22 秒',
-    videoModel: 'grok 1.5',
+    videoModel: 'Seedance 2.0 Fast',
     outputTypes: ['video'],
-    detailSections: [
-      {
-        title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '消除游戏-grok批量' }]
-      },
-      {
-        title: '视频生成 Agent 设置',
-        fields: [
-          { label: '视频模型', value: 'grok 1.5' },
-          { label: '视频时长', value: '15s' },
-          { label: '首帧图', value: 'gameplay_loop_ref.png' },
-          { label: '视频描述', value: 'A high-energy mobile gameplay montage emphasising chain combos, cash reward popups and celebratory close-ups, optimised for short-form social.' },
-          { label: '画面比例', value: '9:16' },
-          { label: '生成数量', value: '4' }
-        ]
-      }
-    ],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '消除_grok_001.mp4', status: 'done', duration: '2 分 04 秒', actions: ['播放', '下载'] },
-      { name: '消除_grok_002.mp4', status: 'done', duration: '2 分 06 秒', actions: ['播放', '下载'] },
-      { name: '消除_grok_003.mp4', status: 'done', duration: '2 分 02 秒', actions: ['播放', '下载'] },
-      { name: '消除_grok_004.mp4', status: 'done', duration: '2 分 10 秒', actions: ['播放', '下载'] }
+      { name: '消除_批量_001.mp4', status: 'done', duration: '2 分 04 秒', actions: ['播放', '下载'] },
+      { name: '消除_批量_002.mp4', status: 'done', duration: '2 分 06 秒', actions: ['播放', '下载'] },
+      { name: '消除_批量_003.mp4', status: 'done', duration: '2 分 02 秒', actions: ['播放', '下载'] },
+      { name: '消除_批量_004.mp4', status: 'done', duration: '2 分 10 秒', actions: ['播放', '下载'] }
+    ]
+  },
+  /* 裂变来的两条：一条基准读得出（magic=on），一条得先过视频理解（magic=off）。
+     一条还在生成中——任务中心不该只有一墙「已完成」，裂变刚提交的样子也得看得见。 */
+  {
+    id: 'T-20260415-303',
+    toolId: 'tool-video',
+    name: '赚钱App-新批投放',
+    status: 'generating',
+    source: 'toolbox',
+    toolName: '视频生成',
+    product: '赚钱App',
+    outputSummary: '视频生成中',
+    createdAt: '2026-04-15 14:08',
+    duration: '进行中',
+    videoModel: 'Seedance 2.0',
+    outputTypes: ['video'],
+    ownerId: 'u10',
+    isCloneTask: true,
+    outputs: [
+      { name: '赚钱_新批_001.mp4', status: 'processing', duration: '进行中', actions: ['播放', '下载'] },
+      { name: '赚钱_新批_002.mp4', status: 'processing', duration: '进行中', actions: ['播放', '下载'] },
+      { name: '赚钱_新批_003.mp4', status: 'processing', duration: '进行中', actions: ['播放', '下载'] },
+      { name: '赚钱_新批_004.mp4', status: 'processing', duration: '进行中', actions: ['播放', '下载'] }
+    ]
+  },
+  {
+    id: 'T-20260415-301',
+    toolId: 'tool-video',
+    name: '消除游戏-裂变 · 只换人物',
+    status: 'completed',
+    source: 'toolbox',
+    toolName: '视频生成',
+    product: '消除游戏',
+    outputSummary: '视频 4 个',
+    createdAt: '2026-04-15 11:20',
+    duration: '7 分 40 秒',
+    videoModel: 'Seedance 2.0 Fast',
+    outputTypes: ['video'],
+    // 裂变任务归属跟基准那条一致（T-20260411-002 是刘洋的）——同一个人接着往下试
+    ownerId: 'u6',
+    isCloneTask: true,
+    outputs: [
+      { name: '消除_裂变人物_001.mp4', status: 'done', duration: '1 分 56 秒', actions: ['播放', '下载'] },
+      { name: '消除_裂变人物_002.mp4', status: 'done', duration: '1 分 58 秒', actions: ['播放', '下载'] },
+      { name: '消除_裂变人物_003.mp4', status: 'done', duration: '1 分 54 秒', actions: ['播放', '下载'] },
+      { name: '消除_裂变人物_004.mp4', status: 'done', duration: '1 分 52 秒', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -1611,7 +1731,7 @@ const MOCK_TASKS = [
     outputSummary: '脚本 6 条 + 视频 4 个',
     createdAt: '2026-04-10 13:55',
     duration: '12 分 36 秒',
-    videoModel: 'Google omni',
+    videoModel: 'Seedance 2.0',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-4',
     workflowNodeDetails: {
@@ -1862,7 +1982,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260408-002',
     toolId: 'tool-video',
-    name: '赚钱App-omni测试',
+    name: '赚钱App-投放测试',
     status: 'failed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -1872,27 +1992,11 @@ const MOCK_TASKS = [
     duration: '4 分 48 秒',
     videoModel: 'Google omni',
     outputTypes: ['video'],
-    detailSections: [
-      {
-        title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '赚钱App-omni测试' }]
-      },
-      {
-        title: '视频生成 Agent 设置',
-        fields: [
-          { label: '视频模型', value: 'Google omni' },
-          { label: '视频时长', value: '10s' },
-          { label: '参考图片', value: 'app_ui_ref.png' },
-          { label: '参考视频', value: 'cashout_ref_clip.mp4' },
-          { label: '视频描述', value: 'A vertical mobile ad showcasing the in-app withdraw flow, fast UI close-ups, cash counting animation and a confident CTA reveal.' },
-          { label: '画面比例', value: '9:16' },
-          { label: '生成数量', value: '2' }
-        ]
-      }
-    ],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '赚钱_veo31_001.mp4', status: 'failed', duration: '2 分 18 秒', actions: ['重试'] },
-      { name: '赚钱_veo31_002.mp4', status: 'failed', duration: '2 分 30 秒', actions: ['重试'] }
+      { name: '赚钱_投放测试_001.mp4', status: 'failed', duration: '2 分 18 秒', actions: ['重试'] },
+      { name: '赚钱_投放测试_002.mp4', status: 'failed', duration: '2 分 30 秒', actions: ['重试'] }
     ]
   },
   {
@@ -1905,7 +2009,7 @@ const MOCK_TASKS = [
     outputSummary: '分析报告 1 份 + 脚本 3 条 + 视频 3 个',
     createdAt: '2026-04-08 16:42',
     duration: '9 分 04 秒',
-    videoModel: 'grok 1.5',
+    videoModel: 'Seedance 2.0',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-3',
     workflowNodeDetails: {
@@ -1976,7 +2080,7 @@ const MOCK_TASKS = [
         status: 'completed',
         duration: '5 分 12 秒',
         params: [
-          { label: '视频模型', value: 'grok 1.5' },
+          { label: '视频模型', value: 'Seedance 2.0' },
           { label: '视频时长', value: '15s' },
           { label: '首帧图', value: 'puzzle_first_frame.png' },
           { label: '画面比例', value: '9:16' },
@@ -2098,9 +2202,31 @@ const MOCK_TASKS = [
     ]
   },
   {
+    id: 'T-20260415-302',
+    toolId: 'tool-video',
+    name: '消除游戏-裂变 · 换场景光线',
+    status: 'partial',
+    source: 'toolbox',
+    toolName: '视频生成',
+    product: '消除游戏',
+    outputSummary: '3 条中 2 条成功、1 条失败',
+    createdAt: '2026-04-15 09:34',
+    duration: '5 分 12 秒',
+    videoModel: 'Seedance 2.0 Mini',
+    outputTypes: ['video'],
+    // 同上：基准 T-20260405-001 是许凡的
+    ownerId: 'u12',
+    isCloneTask: true,
+    outputs: [
+      { name: '消除_裂变场景_001.mp4', status: 'done', duration: '1 分 44 秒', actions: ['播放', '下载'] },
+      { name: '消除_裂变场景_002.mp4', status: 'done', duration: '1 分 46 秒', actions: ['播放', '下载'] },
+      { name: '消除_裂变场景_003.mp4', status: 'failed', duration: '1 分 42 秒', actions: ['重试'] }
+    ]
+  },
+  {
     id: 'T-20260405-001',
     toolId: 'tool-video',
-    name: '消除游戏-omni精修',
+    name: '消除游戏-精修',
     status: 'completed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -2108,28 +2234,12 @@ const MOCK_TASKS = [
     outputSummary: '视频 1 个',
     createdAt: '2026-04-05 10:45',
     duration: '5 分 18 秒',
-    videoModel: 'Google omni',
+    videoModel: 'Seedance 2.0 Mini',
     outputTypes: ['video'],
-    detailSections: [
-      {
-        title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '消除游戏-omni精修' }]
-      },
-      {
-        title: '视频生成 Agent 设置',
-        fields: [
-          { label: '视频模型', value: 'Google omni' },
-          { label: '视频时长', value: '10s' },
-          { label: '参考图片', value: 'puzzle_style_ref.png' },
-          { label: '参考视频', value: 'puzzle_ref_clip.mp4' },
-          { label: '视频描述', value: 'A polished vertical mobile-game ad with cinematic lighting, slow-motion combo highlights and a clean CTA card on the final beat.' },
-          { label: '画面比例', value: '9:16' },
-          { label: '生成数量', value: '1' }
-        ]
-      }
-    ],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '消除_veo31_精修.mp4', status: 'done', duration: '5 分 18 秒', actions: ['播放', '下载'] }
+      { name: '消除_精修.mp4', status: 'done', duration: '5 分 18 秒', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -2186,7 +2296,7 @@ const MOCK_TASKS = [
     outputSummary: '脚本 3 条 待确认，视频待生成',
     createdAt: '2026-04-05 17:12',
     duration: '2 分 32 秒（已暂停）',
-    videoModel: 'Google omni',
+    videoModel: 'Seedance 2.0',
     outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     pendingConfirmNodeId: 'n3',
@@ -2312,7 +2422,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260403-002',
     toolId: 'tool-video',
-    name: '春季营销-grok补量',
+    name: '春季营销-补量',
     status: 'completed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -2320,25 +2430,10 @@ const MOCK_TASKS = [
     outputSummary: '视频 3 个',
     createdAt: '2026-04-03 14:18',
     duration: '6 分 24 秒',
-    videoModel: 'grok 1.5',
+    videoModel: 'Seedance 2.0 Fast',
     outputTypes: ['video'],
-    detailSections: [
-      {
-        title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '春季营销-grok补量' }]
-      },
-      {
-        title: '视频生成 Agent 设置',
-        fields: [
-          { label: '视频模型', value: 'grok 1.5' },
-          { label: '视频时长', value: '15s' },
-          { label: '首帧图', value: 'spring_visual_supplement.png' },
-          { label: '视频描述', value: 'A supplemental batch of bright spring-themed vertical ads matching the campaign style guide, with quick UI close-ups and energetic transitions.' },
-          { label: '画面比例', value: '9:16' },
-          { label: '生成数量', value: '3' }
-        ]
-      }
-    ],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
       { name: '春季补量_001.mp4', status: 'done', duration: '2 分 06 秒', actions: ['播放', '下载'] },
       { name: '春季补量_002.mp4', status: 'done', duration: '2 分 08 秒', actions: ['播放', '下载'] },
@@ -2432,7 +2527,7 @@ const MOCK_TASKS = [
   {
     id: 'T-20260401-002',
     toolId: 'tool-video',
-    name: '消除游戏-grok首测',
+    name: '消除游戏-首测',
     status: 'completed',
     source: 'toolbox',
     toolName: '视频生成',
@@ -2440,28 +2535,13 @@ const MOCK_TASKS = [
     outputSummary: '视频 2 个',
     createdAt: '2026-04-01 15:48',
     duration: '4 分 02 秒',
-    videoModel: 'grok 1.5',
+    videoModel: 'Seedance 2.0',
     outputTypes: ['video'],
-    detailSections: [
-      {
-        title: '任务基本信息',
-        fields: [{ label: '任务名称', value: '消除游戏-grok首测' }]
-      },
-      {
-        title: '视频生成 Agent 设置',
-        fields: [
-          { label: '视频模型', value: 'grok 1.5' },
-          { label: '视频时长', value: '15s' },
-          { label: '首帧图', value: 'puzzle_first_test.png' },
-          { label: '视频描述', value: 'An initial grok 1.5 test batch for the puzzle game, fast UI close-ups, combo effects and a concise CTA card.' },
-          { label: '画面比例', value: '9:16' },
-          { label: '生成数量', value: '2' }
-        ]
-      }
-    ],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '消除_grok首测_001.mp4', status: 'done', duration: '1 分 58 秒', actions: ['播放', '下载'] },
-      { name: '消除_grok首测_002.mp4', status: 'done', duration: '2 分 04 秒', actions: ['播放', '下载'] }
+      { name: '消除_首测_001.mp4', status: 'done', duration: '1 分 58 秒', actions: ['播放', '下载'] },
+      { name: '消除_首测_002.mp4', status: 'done', duration: '2 分 04 秒', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -2561,9 +2641,10 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260414-102',
-    toolId: 'tool-video', name: '消除游戏-grok竖版', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-04-14 13:15', duration: '4 分 28 秒', videoModel: 'grok 1.5', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-grok竖版' }] }],
+    toolId: 'tool-video', name: '消除游戏-竖版', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-04-14 13:15', duration: '4 分 28 秒', videoModel: 'Seedance 2.0 Mini', outputTypes: ['video'],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
       { name: '消除_竖版_001.mp4', status: 'done', duration: '2 分 08 秒', actions: ['播放', '下载'] },
       { name: '消除_竖版_002.mp4', status: 'done', duration: '2 分 20 秒', actions: ['播放', '下载'] }
@@ -2583,18 +2664,19 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260413-202',
-    toolId: 'tool-video', name: '消除游戏-omni增长测试', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-04-13 14:00', duration: '6 分 14 秒', videoModel: 'Google omni', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-omni增长测试' }] }],
+    toolId: 'tool-video', name: '消除游戏-增长测试', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-04-13 14:00', duration: '6 分 14 秒', videoModel: 'Minimax H3', outputTypes: ['video'],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '增长_veo31_001.mp4', status: 'done', duration: '3 分 10 秒', actions: ['播放', '下载'] },
-      { name: '增长_veo31_002.mp4', status: 'done', duration: '3 分 04 秒', actions: ['播放', '下载'] }
+      { name: '增长_测试_001.mp4', status: 'done', duration: '3 分 10 秒', actions: ['播放', '下载'] },
+      { name: '增长_测试_002.mp4', status: 'done', duration: '3 分 04 秒', actions: ['播放', '下载'] }
     ]
   },
   {
     id: 'T-20260412-201',
     name: '赚钱App-海外脚本视频', status: 'completed', source: 'workflow', toolName: '先生成脚本生成视频',
-    product: '赚钱App', outputSummary: '脚本 2 条 + 视频 2 个', createdAt: '2026-04-12 11:00', duration: '9 分 22 秒', videoModel: 'grok 1.5', outputTypes: ['script', 'video'],
+    product: '赚钱App', outputSummary: '脚本 2 条 + 视频 2 个', createdAt: '2026-04-12 11:00', duration: '9 分 22 秒', videoModel: 'Minimax H3', outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     workflowNodeDetails: {
       n1: { status: 'completed', duration: '10 秒', params: [], outputs: [], outputSummary: '任务上下文已建立' },
@@ -2604,16 +2686,16 @@ const MOCK_TASKS = [
       ], outputSummary: '已生成 2 条脚本' },
       n3: { status: 'completed', duration: '28 秒', params: [], outputs: [], outputSummary: '脚本归档完成' },
       n4: { status: 'completed', duration: '7 分 32 秒', params: [], outputs: [
-        { name: '海外_grok_001.mp4', status: 'done', duration: '3 分 42 秒' },
-        { name: '海外_grok_002.mp4', status: 'done', duration: '3 分 50 秒' }
+        { name: '海外脚本_001.mp4', status: 'done', duration: '3 分 42 秒' },
+        { name: '海外脚本_002.mp4', status: 'done', duration: '3 分 50 秒' }
       ], outputSummary: '2 个视频已生成' },
       n5: { status: 'completed', duration: '30 秒', params: [], outputs: [], outputSummary: '归档完成' }
     },
     outputs: [
       { name: '海外_脚本_001.md', status: 'done', duration: '20 秒', actions: ['预览', '复制', '下载'] },
       { name: '海外_脚本_002.md', status: 'done', duration: '22 秒', actions: ['预览', '复制', '下载'] },
-      { name: '海外_grok_001.mp4', status: 'done', duration: '3 分 42 秒', actions: ['播放', '下载'] },
-      { name: '海外_grok_002.mp4', status: 'done', duration: '3 分 50 秒', actions: ['播放', '下载'] }
+      { name: '海外脚本_001.mp4', status: 'done', duration: '3 分 42 秒', actions: ['播放', '下载'] },
+      { name: '海外脚本_002.mp4', status: 'done', duration: '3 分 50 秒', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -2628,13 +2710,14 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260411-201',
-    toolId: 'tool-video', name: '消除游戏-omni增长A组', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    toolId: 'tool-video', name: '消除游戏-增长A组', status: 'completed', source: 'toolbox', toolName: '视频生成',
     product: '消除游戏', outputSummary: '视频 3 个', createdAt: '2026-04-11 09:45', duration: '9 分 06 秒', videoModel: 'Google omni', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-omni增长A组' }] }],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '增长A_veo31_001.mp4', status: 'done', duration: '3 分 02 秒', actions: ['播放', '下载'] },
-      { name: '增长A_veo31_002.mp4', status: 'done', duration: '2 分 58 秒', actions: ['播放', '下载'] },
-      { name: '增长A_veo31_003.mp4', status: 'done', duration: '3 分 06 秒', actions: ['播放', '下载'] }
+      { name: '增长A_001.mp4', status: 'done', duration: '3 分 02 秒', actions: ['播放', '下载'] },
+      { name: '增长A_002.mp4', status: 'done', duration: '2 分 58 秒', actions: ['播放', '下载'] },
+      { name: '增长A_003.mp4', status: 'done', duration: '3 分 06 秒', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -2663,28 +2746,30 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260410-102',
-    toolId: 'tool-video', name: '赚钱App-grok品牌视频', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '赚钱App', outputSummary: '视频 2 个', createdAt: '2026-04-10 14:20', duration: '5 分 02 秒', videoModel: 'grok 1.5', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '赚钱App-grok品牌视频' }] }],
+    toolId: 'tool-video', name: '赚钱App-品牌视频', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '赚钱App', outputSummary: '视频 2 个', createdAt: '2026-04-10 14:20', duration: '5 分 02 秒', videoModel: 'Seedance 2.0', outputTypes: ['video'],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '赚钱_grok_001.mp4', status: 'done', duration: '2 分 28 秒', actions: ['播放', '下载'] },
-      { name: '赚钱_grok_002.mp4', status: 'done', duration: '2 分 34 秒', actions: ['播放', '下载'] }
+      { name: '赚钱_品牌_001.mp4', status: 'done', duration: '2 分 28 秒', actions: ['播放', '下载'] },
+      { name: '赚钱_品牌_002.mp4', status: 'done', duration: '2 分 34 秒', actions: ['播放', '下载'] }
     ]
   },
   {
     id: 'T-20260409-101',
-    toolId: 'tool-video', name: '消除游戏-omni品牌组', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-04-09 11:00', duration: '6 分 32 秒', videoModel: 'Google omni', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-omni品牌组' }] }],
+    toolId: 'tool-video', name: '消除游戏-品牌组', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-04-09 11:00', duration: '6 分 32 秒', videoModel: 'Seedance 2.0 Fast', outputTypes: ['video'],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '品牌组_veo31_001.mp4', status: 'done', duration: '3 分 18 秒', actions: ['播放', '下载'] },
-      { name: '品牌组_veo31_002.mp4', status: 'done', duration: '3 分 14 秒', actions: ['播放', '下载'] }
+      { name: '品牌组_001.mp4', status: 'done', duration: '3 分 18 秒', actions: ['播放', '下载'] },
+      { name: '品牌组_002.mp4', status: 'done', duration: '3 分 14 秒', actions: ['播放', '下载'] }
     ]
   },
   {
     id: 'T-20260409-102',
     name: '春季营销-脚本视频快产', status: 'completed', source: 'workflow', toolName: '先生成脚本生成视频',
-    product: '春季营销', outputSummary: '脚本 3 条 + 视频 3 个', createdAt: '2026-04-09 15:30', duration: '8 分 04 秒', videoModel: 'grok 1.5', outputTypes: ['script', 'video'],
+    product: '春季营销', outputSummary: '脚本 3 条 + 视频 3 个', createdAt: '2026-04-09 15:30', duration: '8 分 04 秒', videoModel: 'Seedance 2.0 Fast', outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     workflowNodeDetails: {
       n1: { status: 'completed', duration: '8 秒', params: [], outputs: [], outputSummary: '任务上下文已建立' },
@@ -2723,12 +2808,13 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260407-101',
-    toolId: 'tool-video', name: '品牌推广-grok 1.515s', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '品牌推广', outputSummary: '视频 2 个', createdAt: '2026-04-07 10:40', duration: '4 分 48 秒', videoModel: 'grok 1.5', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '品牌推广-grok 1.515s' }] }],
+    toolId: 'tool-video', name: '品牌推广-15s 短片', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '品牌推广', outputSummary: '视频 2 个', createdAt: '2026-04-07 10:40', duration: '4 分 48 秒', videoModel: 'Seedance 2.0 Mini', outputTypes: ['video'],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '品牌_grok15s_001.mp4', status: 'done', duration: '2 分 18 秒', actions: ['播放', '下载'] },
-      { name: '品牌_grok15s_002.mp4', status: 'done', duration: '2 分 30 秒', actions: ['播放', '下载'] }
+      { name: '品牌_15s_001.mp4', status: 'done', duration: '2 分 18 秒', actions: ['播放', '下载'] },
+      { name: '品牌_15s_002.mp4', status: 'done', duration: '2 分 30 秒', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -2745,19 +2831,20 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260405-001',
-    toolId: 'tool-video', name: '消除游戏-grok增长B组', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '消除游戏', outputSummary: '视频 3 个', createdAt: '2026-04-05 10:30', duration: '6 分 20 秒', videoModel: 'grok 1.5', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-grok增长B组' }] }],
+    toolId: 'tool-video', name: '消除游戏-增长B组', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '消除游戏', outputSummary: '视频 3 个', createdAt: '2026-04-05 10:30', duration: '6 分 20 秒', videoModel: 'Minimax H3', outputTypes: ['video'],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '增长B_grok_001.mp4', status: 'done', duration: '2 分 04 秒', actions: ['播放', '下载'] },
-      { name: '增长B_grok_002.mp4', status: 'done', duration: '2 分 06 秒', actions: ['播放', '下载'] },
-      { name: '增长B_grok_003.mp4', status: 'done', duration: '2 分 10 秒', actions: ['播放', '下载'] }
+      { name: '增长B_001.mp4', status: 'done', duration: '2 分 04 秒', actions: ['播放', '下载'] },
+      { name: '增长B_002.mp4', status: 'done', duration: '2 分 06 秒', actions: ['播放', '下载'] },
+      { name: '增长B_003.mp4', status: 'done', duration: '2 分 10 秒', actions: ['播放', '下载'] }
     ]
   },
   {
     id: 'T-20260404-001',
     name: '品牌推广-增长组联动', status: 'completed', source: 'workflow', toolName: '先生成脚本生成视频',
-    product: '品牌推广', outputSummary: '脚本 2 条 + 视频 2 个', createdAt: '2026-04-04 13:00', duration: '10 分 18 秒', videoModel: 'Google omni', outputTypes: ['script', 'video'],
+    product: '品牌推广', outputSummary: '脚本 2 条 + 视频 2 个', createdAt: '2026-04-04 13:00', duration: '10 分 18 秒', videoModel: 'Seedance 2.0', outputTypes: ['script', 'video'],
     workflowTemplate: 'wt-1',
     workflowNodeDetails: {
       n1: { status: 'completed', duration: '9 秒', params: [], outputs: [], outputSummary: '任务上下文已建立' },
@@ -2767,16 +2854,16 @@ const MOCK_TASKS = [
       ], outputSummary: '已生成 2 条脚本' },
       n3: { status: 'completed', duration: '26 秒', params: [], outputs: [], outputSummary: '脚本归档完成' },
       n4: { status: 'completed', duration: '8 分 35 秒', params: [], outputs: [
-        { name: '增长联动_veo31_001.mp4', status: 'done', duration: '4 分 12 秒' },
-        { name: '增长联动_veo31_002.mp4', status: 'done', duration: '4 分 23 秒' }
+        { name: '增长联动_001.mp4', status: 'done', duration: '4 分 12 秒' },
+        { name: '增长联动_002.mp4', status: 'done', duration: '4 分 23 秒' }
       ], outputSummary: '2 个视频生成完成' },
       n5: { status: 'completed', duration: '28 秒', params: [], outputs: [], outputSummary: '归档完成' }
     },
     outputs: [
       { name: '增长联动_脚本_001.md', status: 'done', duration: '22 秒', actions: ['预览', '复制', '下载'] },
       { name: '增长联动_脚本_002.md', status: 'done', duration: '24 秒', actions: ['预览', '复制', '下载'] },
-      { name: '增长联动_veo31_001.mp4', status: 'done', duration: '4 分 12 秒', actions: ['播放', '下载'] },
-      { name: '增长联动_veo31_002.mp4', status: 'done', duration: '4 分 23 秒', actions: ['播放', '下载'] }
+      { name: '增长联动_001.mp4', status: 'done', duration: '4 分 12 秒', actions: ['播放', '下载'] },
+      { name: '增长联动_002.mp4', status: 'done', duration: '4 分 23 秒', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -2792,12 +2879,13 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260402-001',
-    toolId: 'tool-video', name: '赚钱App-grok海外版', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '赚钱App', outputSummary: '视频 2 个', createdAt: '2026-04-02 14:00', duration: '5 分 14 秒', videoModel: 'grok 1.5', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '赚钱App-grok海外版' }] }],
+    toolId: 'tool-video', name: '赚钱App-海外版', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '赚钱App', outputSummary: '视频 2 个', createdAt: '2026-04-02 14:00', duration: '5 分 14 秒', videoModel: 'Seedance 2.0', outputTypes: ['video'],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '海外_grok_001.mp4', status: 'done', duration: '2 分 32 秒', actions: ['播放', '下载'] },
-      { name: '海外_grok_002.mp4', status: 'done', duration: '2 分 42 秒', actions: ['播放', '下载'] }
+      { name: '海外版_001.mp4', status: 'done', duration: '2 分 32 秒', actions: ['播放', '下载'] },
+      { name: '海外版_002.mp4', status: 'done', duration: '2 分 42 秒', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -2813,11 +2901,12 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260331-101',
-    toolId: 'tool-video', name: '品牌推广-omni横版', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    toolId: 'tool-video', name: '品牌推广-横版', status: 'completed', source: 'toolbox', toolName: '视频生成',
     product: '品牌推广', outputSummary: '视频 1 个', createdAt: '2026-03-31 14:30', duration: '5 分 28 秒', videoModel: 'Google omni', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '品牌推广-omni横版' }] }],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '品牌_veo31_横版.mp4', status: 'done', duration: '5 分 28 秒', actions: ['播放', '下载'] }
+      { name: '品牌_横版.mp4', status: 'done', duration: '5 分 28 秒', actions: ['播放', '下载'] }
     ]
   },
   {
@@ -2833,12 +2922,13 @@ const MOCK_TASKS = [
   },
   {
     id: 'T-20260328-101',
-    toolId: 'tool-video', name: '消除游戏-grok增长测试', status: 'completed', source: 'toolbox', toolName: '视频生成',
-    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-03-28 15:00', duration: '4 分 36 秒', videoModel: 'grok 1.5', outputTypes: ['video'],
-    detailSections: [{ title: '任务基本信息', fields: [{ label: '任务名称', value: '消除游戏-grok增长测试' }] }],
+    toolId: 'tool-video', name: '消除游戏-增长基线', status: 'completed', source: 'toolbox', toolName: '视频生成',
+    product: '消除游戏', outputSummary: '视频 2 个', createdAt: '2026-03-28 15:00', duration: '4 分 36 秒', videoModel: 'Seedance 2.0 Fast', outputTypes: ['video'],
+    // 详情走 apps/video-clone 的视频生成详情（与工具新产出的任务同一个界面）
+    isCloneTask: true,
     outputs: [
-      { name: '增长测试_grok_001.mp4', status: 'done', duration: '2 分 14 秒', actions: ['播放', '下载'] },
-      { name: '增长测试_grok_002.mp4', status: 'done', duration: '2 分 22 秒', actions: ['播放', '下载'] }
+      { name: '增长基线_001.mp4', status: 'done', duration: '2 分 14 秒', actions: ['播放', '下载'] },
+      { name: '增长基线_002.mp4', status: 'done', duration: '2 分 22 秒', actions: ['播放', '下载'] }
     ]
   },
   {

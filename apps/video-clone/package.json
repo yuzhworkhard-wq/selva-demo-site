@@ -1,0 +1,25 @@
+{
+  "name": "video-clone-demo",
+  "version": "1.0.0",
+  "description": "SELVA 视频克隆 / 视频生成工具（平台以 iframe 承载，构建产物落 site/clone/）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && npm run sync",
+    "sync": "rsync -a --delete ../../site/clone/ ../../source/clone/",
+    "preview": "vite preview",
+    "test": "node smoke-fanout.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "lucide-react": "^1.22.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.3",
+    "vite": "^8.1.0"
+  }
+}
