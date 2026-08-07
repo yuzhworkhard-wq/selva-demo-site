@@ -128,8 +128,8 @@ function genIssues(model, refs, promptText = '') {
 }
 
 /* Magic Prompt：只管「这几条的 prompt 有多不一样」，不管要几条（那是条数的事）。
-   跟「AI 扩写」的分工——扩写是你点一下、改的是输入框里那句话、看得见；
-   Magic Prompt 是每次生成时后台跑、每条各变一次、事后在任务详情里逐条查。 */
+   它是每次生成时后台跑、每条各变一次、事后在任务详情里逐条查——
+   输入框里那句话始终是用户自己写的，系统不去改它。 */
 const MAGIC_OPTIONS = [
   { value: 'auto', label: '自动' },
   { value: 'on', label: '开' },
@@ -271,6 +271,323 @@ export function AutoTextarea({ value, onChange, onSubmit, placeholder, minRows =
   );
 }
 
+/* ══ @素材引用：输入框里的 chip ══
+   和视频克隆的提示词编辑器同一套语义——引用一个素材就该看得见那张图，
+   纯文字「参考图1」没有指认力（briefParser 的 assetChip 也是这么做的）。
+   所以第一步的输入框不能是 textarea（纯文本控件装不下 DOM 节点），
+   改成 contenteditable，chip 作为 contenteditable=false 的原子块整体删。
+
+   对外仍然只吐纯文本：chip 的可见文字就是「@图片1」，innerText 天然拿到，
+   于是 promptText 依旧是那个字符串，下游（briefParser / sourceText / 字数）全都不用改。 */
+const TOK_KIND_LABEL = { image: '图片', video: '视频', audio: '音频' };
+const TOK_ICON = {
+  video: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>',
+  audio: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+};
+const escAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+const escText = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const tokLabel = (kind, idx) => `@${TOK_KIND_LABEL[kind]}${idx + 1}`;
+
+// 一个素材 chip。图片给缩略图，视频/音频给图标（它们没有能一眼认出的画面）
+function tokHtml(kind, idx, item) {
+  const face = kind === 'image'
+    ? `<img src="${escAttr(item.url)}" alt="">`
+    : TOK_ICON[kind];
+  return `<span class="composer-tok" contenteditable="false" data-kind="${kind}"`
+    + ` data-url="${escAttr(item.url)}" title="${escAttr(item.name || TOK_KIND_LABEL[kind])}">`
+    + `${face}${tokLabel(kind, idx)}</span>`;
+}
+
+// 已挂载素材摊平成一张可引用清单（顺序＝dock 里的顺序，编号也从这里来）
+function refMentions(refs) {
+  const out = [];
+  REF_KINDS.forEach(({ key }) => {
+    (refs[key] || []).forEach((item, idx) => {
+      out.push({ kind: key, idx, item, label: tokLabel(key, idx), name: item.name || `${TOK_KIND_LABEL[key]}${idx + 1}` });
+    });
+  });
+  return out;
+}
+
+/* 纯文本 → HTML。只在「外部把文字塞进来」时用（爆款模板 / 重新编辑 / 提交后清空）：
+   那些文本里的 @图片1 也要还原成 chip，否则同一句话在写的时候是 chip、回填后变裸字。 */
+function textToHtml(text, refs) {
+  const list = refMentions(refs);
+  const byLabel = Object.fromEntries(list.map(m => [m.label, m]));
+  const re = /@(?:图片|视频|音频)\d+/g;
+  let html = '', last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    const hit = byLabel[m[0]];
+    if (!hit) continue;                       // 指不到实际素材的就是普通文字，别造假 chip
+    html += escText(text.slice(last, m.index)) + tokHtml(hit.kind, hit.idx, hit.item);
+    last = m.index + m[0].length;
+  }
+  html += escText(text.slice(last));
+  return html.replace(/\n/g, '<br>');
+}
+
+/* 素材被删/换模型清空后，编辑器里那些 chip 就成了孤儿；序号也会整体前移。
+   按 kind+url 重新认领：认不到的 chip 就地移除，认到的把序号文字刷新。 */
+function syncToks(el, refs) {
+  const list = refMentions(refs);
+  let changed = false;
+  el.querySelectorAll('.composer-tok').forEach(tok => {
+    const kind = tok.dataset.kind;
+    const url = tok.dataset.url;
+    const hit = list.find(x => x.kind === kind && x.item.url === url);
+    if (!hit) { tok.remove(); changed = true; return; }
+    const want = tokLabel(kind, hit.idx);
+    if (tok.lastChild && tok.lastChild.nodeType === 3 && tok.lastChild.nodeValue !== want) {
+      tok.lastChild.nodeValue = want;
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+/* 编辑器 DOM → 纯文本。不能用 innerText：chip 是 inline-flex，
+   innerText 按「非 inline 就是块」把它前后各塞一个换行，
+   于是「产品 @图片1」会变成「产品 \n@图片1」，断行一路串到 briefParser 里。 */
+function readText(el) {
+  let out = '';
+  const walk = (node) => {
+    node.childNodes.forEach(n => {
+      if (n.nodeType === 3) { out += n.nodeValue; return; }
+      if (n.nodeName === 'BR') { out += '\n'; return; }
+      if (n.classList && n.classList.contains('composer-tok')) { out += n.textContent; return; }
+      // 回车在 contenteditable 里会生成 div/p，那才是真换行
+      if ((n.nodeName === 'DIV' || n.nodeName === 'P') && out && !out.endsWith('\n')) out += '\n';
+      walk(n);
+    });
+  };
+  walk(el);
+  return out;
+}
+
+// 把节点插到光标处，并把光标落到它后面（后面补一个空格，接着打字不会粘在 chip 上）
+function insertAtCaret(el, node) {
+  const sel = window.getSelection();
+  let range;
+  if (sel && sel.rangeCount && el.contains(sel.anchorNode)) {
+    range = sel.getRangeAt(0);
+    range.deleteContents();
+  } else {                       // 光标不在编辑器里（如点菜单丢了焦点）：落到末尾
+    range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+  }
+  const space = document.createTextNode(' ');
+  range.insertNode(space);
+  range.insertNode(node);
+  range.setStartAfter(space);
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+/* 光标正前方那个待补全的 @ 片段：返回 [@ 的位置, 已经打了的过滤词]。
+   @ 紧跟在字母数字后面的不算（邮箱、@2x 这类），只有词首的 @ 才是引用。 */
+function readAtQuery(el) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return null;
+  const node = sel.anchorNode;
+  if (!node || node.nodeType !== 3 || !el.contains(node)) return null;
+  const text = node.nodeValue.slice(0, sel.anchorOffset);
+  const at = text.lastIndexOf('@');
+  if (at < 0) return null;
+  const query = text.slice(at + 1);
+  if (/\s/.test(query) || query.length > 12) return null;   // 空格断词＝这个 @ 已经写废了
+  const before = at > 0 ? text[at - 1] : '';
+  if (before && /[A-Za-z0-9]/.test(before)) return null;
+  return { node, at, query };
+}
+
+/* ── 第一步的输入框：contenteditable + @素材引用 ──
+   非受控（挂载与外部注入时写一次 HTML，之后交给浏览器原生编辑），
+   与克隆侧 PromptEditor 同一个理由：受控 contenteditable 会毁光标。 */
+function ComposerEditor({
+  value, onChange, onSubmit, placeholder, refs, maxHeight = 240,
+  seed = 0, onPickMore,
+}) {
+  const ref = useRef(null);
+  const [menu, setMenu] = useState(null);      // { x, y, top, query }
+  const [active, setActive] = useState(0);
+  const mentions = refMentions(refs);
+  const list = menu
+    ? mentions.filter(m => !menu.query
+      || m.name.toLowerCase().includes(menu.query.toLowerCase())
+      || m.label.includes(menu.query))
+    : [];
+
+  const emit = () => {
+    const el = ref.current;
+    if (el) onChange(readText(el));
+  };
+  const resize = () => {
+    const el = ref.current;
+    if (el) el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  };
+
+  // 外部注入（模板/清空/重新编辑）才重写 DOM；用户自己打字时不碰，否则光标会跳
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (readText(el) !== value) el.innerHTML = textToHtml(value || '', refs);
+    resize();
+  }, [seed]);
+
+  // 素材增删后同步 chip（孤儿删掉、序号刷新），文本随之变化要回吐给上层
+  useEffect(() => {
+    const el = ref.current;
+    if (el && syncToks(el, refs)) emit();
+  }, [refs.image, refs.video, refs.audio]);
+
+  const closeMenu = () => { setMenu(null); setActive(0); };
+
+  // 每次输入后重新判断光标前是不是一个待补全的 @
+  const refreshMenu = () => {
+    const el = ref.current;
+    if (!el) return;
+    const q = readAtQuery(el);
+    if (!q) return closeMenu();
+    const sel = window.getSelection();
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    // collapsed range 偶尔量不到（空行首）：退回用编辑器左缘
+    const hit = rect.width || rect.height;
+    setMenu({
+      x: hit ? rect.left : box.left,
+      y: hit ? rect.bottom : box.bottom,
+      top: hit ? rect.top : box.top,
+      query: q.query,
+    });
+    setActive(0);
+  };
+
+  const pick = (m) => {
+    const el = ref.current;
+    const q = readAtQuery(el);
+    if (q) {   // 把已经打进去的「@图」这几个字删掉，chip 取而代之
+      const range = document.createRange();
+      range.setStart(q.node, q.at);
+      range.setEnd(q.node, q.at + 1 + q.query.length);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    const tpl = document.createElement('template');
+    tpl.innerHTML = tokHtml(m.kind, m.idx, m.item);
+    insertAtCaret(el, tpl.content.firstChild);
+    closeMenu();
+    emit();
+    resize();
+    el.focus();
+  };
+
+  const onKeyDown = (e) => {
+    if (menu && list.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => (i + 1) % list.length); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setActive(i => (i - 1 + list.length) % list.length); return; }
+      // Shift+Enter 是明确的「换行」，别被菜单吃掉——放行，顺手把菜单收了
+      if (e.key === 'Enter' && e.shiftKey) { closeMenu(); return; }
+      if ((e.key === 'Enter' || e.key === 'Tab') && !e.nativeEvent.isComposing) {
+        e.preventDefault(); pick(list[active]); return;
+      }
+    }
+    if (menu && e.key === 'Escape') { e.preventDefault(); closeMenu(); return; }
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && onSubmit) {
+      e.preventDefault(); onSubmit();
+    }
+  };
+
+  return (
+    <div className="composer-editor-wrap">
+      <div
+        ref={ref}
+        className="composer-input composer-input--rich"
+        contentEditable
+        suppressContentEditableWarning
+        spellCheck={false}
+        role="textbox"
+        aria-multiline="true"
+        data-placeholder={placeholder}
+        style={{ maxHeight }}
+        onInput={() => { emit(); resize(); refreshMenu(); }}
+        onKeyDown={onKeyDown}
+        onKeyUp={e => { if (e.key.startsWith('Arrow')) refreshMenu(); }}
+        onBlur={() => setTimeout(closeMenu, 120)}   // 等菜单的 click 先跑完
+        onPaste={e => {                              // 只收纯文本，别把外部样式粘进来
+          e.preventDefault();
+          const t = (e.clipboardData || window.clipboardData).getData('text/plain');
+          document.execCommand('insertText', false, t);
+        }}
+      />
+      {menu && (
+        <AtMenu
+          x={menu.x} y={menu.y} top={menu.top}
+          list={list} active={active} query={menu.query}
+          onPick={pick} onSetActive={setActive}
+          onPickMore={() => { closeMenu(); onPickMore?.(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* @ 菜单：列已挂载的素材，选谁就插谁的 chip。
+   没挂素材（或过滤没命中）时不留空菜单——直接把「去挂素材」这条路摆出来。 */
+function AtMenu({ x, y, top, list, active, query, onPick, onSetActive, onPickMore }) {
+  const ref = useRef(null);
+  const [pos, setPos] = useState({ left: x, top: y + 6, ready: false });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const w = el.offsetWidth, h = el.offsetHeight;
+    const left = Math.min(Math.max(8, x), window.innerWidth - w - 8);
+    // 下方放不下就翻到光标上方
+    const t = (y + 6 + h > window.innerHeight - 8) ? Math.max(8, top - h - 6) : y + 6;
+    setPos({ left, top: t, ready: true });
+  }, [x, y, top, list.length]);
+
+  return (
+    <div
+      ref={ref} className="at-menu" role="listbox"
+      style={{ left: pos.left, top: pos.top, visibility: pos.ready ? 'visible' : 'hidden' }}
+      onMouseDown={e => e.preventDefault()}   // 别让编辑器失焦，光标要留在原地
+    >
+      {list.length > 0 ? (
+        <div className="at-menu-list">
+          {list.map((m, i) => (
+            <button
+              type="button" key={`${m.kind}-${m.idx}`} role="option" aria-selected={i === active}
+              className={`at-menu-item ${i === active ? 'active' : ''}`}
+              onMouseEnter={() => onSetActive(i)}
+              onClick={() => onPick(m)}
+            >
+              {m.kind === 'image'
+                ? <img className="at-menu-thumb" src={m.item.url} alt="" />
+                : <span className="at-menu-thumb at-menu-thumb--icon">
+                  {m.kind === 'video' ? <Film size={13} strokeWidth={1.8} /> : <Music size={13} strokeWidth={1.8} />}
+                </span>}
+              <span className="at-menu-text">
+                <b>{m.label}</b>
+                <em>{m.name}</em>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="at-menu-empty">
+          {query ? `没有匹配「${query}」的素材` : '还没有挂载参考素材'}
+        </div>
+      )}
+      <button type="button" className="at-menu-more" onClick={onPickMore}>
+        <Plus size={13} strokeWidth={2} /> 添加参考素材…
+      </button>
+    </div>
+  );
+}
+
 /* ════ 主组件 ════ */
 export function VideoGenModal({
   onClose, onRestart, visible = true, embedded = false,
@@ -285,7 +602,6 @@ export function VideoGenModal({
   const [attachedImages, setAttachedImages] = useState(() => toRefItems(initialImages));
   const [attachedVideos, setAttachedVideos] = useState(() => toRefItems(initialVideos));
   const [attachedAudios, setAttachedAudios] = useState(() => toRefItems(initialAudios));
-  const [imageRole, setImageRole] = useState('subject');   // subject 让它动 | ref 当参考
   // 老任务里存的是已下线的模型名，「重新编辑」回来时落回默认档，不能把不存在的模型摆出来
   const [videoModel, setVideoModel] = useState(() => (VIDEO_MODEL_CONFIG[initialModel] ? initialModel : DEFAULT_MODEL));
   const [aspect, setAspect] = useState(initialAspect || '9:16');
@@ -295,7 +611,10 @@ export function VideoGenModal({
   });
   const [count, setCount] = useState(initialCount || 4);
   const [magic, setMagic] = useState(initialMagic || 'auto');   // Magic Prompt：auto | on | off
-  const [undoText, setUndoText] = useState(null);               // AI 扩写前的原文，供撤销
+  /* 输入框是非受控的 contenteditable（受控会毁光标）。只有「外部把文字塞回去」时
+     才需要重写它的 DOM——把这些时刻记成一个计数，用户自己打字时一次都不碰。 */
+  const [injectSeed, setInjectSeed] = useState(0);
+  const injectText = (t) => { setPromptText(t); setInjectSeed(s => s + 1); };
   const [toast, setToast] = useState(null);                     // 提交后的顶部轻提示 { msg, warn }
   const toastTimer = useRef(null);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
@@ -381,19 +700,7 @@ export function VideoGenModal({
     setDuration(d => (ds.includes(d) ? d : ds[0]));
   };
   // 爆款库点一条＝把它的提示词灌进输入框（封面是成片截图不是参考素材，不自动挂图）
-  const handleApplyTemplate = (item) => { setPromptText(item.prompt); };
-  /* AI 扩写：一次性加工「你这一句话」，结果写回输入框——看得见、能改、能撤。
-     这是它跟 Magic Prompt 的分界：那个是每条各自变、后台跑、不写回输入框。 */
-  const handleEnhance = () => {
-    if (!promptText.trim()) return;
-    setUndoText(promptText);
-    setPromptText(p => p.replace(/[，。]?\s*$/, '') + '，画面电影感、真实光线、9:16 竖屏、节奏紧凑。');
-  };
-  const handleUndoEnhance = () => {
-    if (undoText == null) return;
-    setPromptText(undoText);
-    setUndoText(null);
-  };
+  const handleApplyTemplate = (item) => { injectText(item.prompt); };
 
   /* 生成：脚本在这里一次性配好直接进任务中心，不再让用户过一道预览。
      裂变规则（Magic Prompt 三档怎么影响 N 条的差异性）全在 buildVariantScripts 里，
@@ -434,10 +741,10 @@ export function VideoGenModal({
       setSubmitting(false);
       // 输入已经交出去了，框子清空好接着写下一条；参数（模型/画幅/时长/条数/Magic）留着不动
       setPromptText('');
+      setInjectSeed(s => s + 1);   // 框子清空要落到 DOM 上
       setAttachedImages([]);
       setAttachedVideos([]);
       setAttachedAudios([]);
-      setUndoText(null);
       showToast(n > 1 ? `${n} 条视频已提交至任务中心` : '视频已提交至任务中心');
     }, 1200);
   };
@@ -457,13 +764,11 @@ export function VideoGenModal({
         <div className="clone-page-body">
           <div className="clone-page-inner">
             <Step1InputIdea
-              promptText={promptText} setPromptText={setPromptText}
+              promptText={promptText} setPromptText={setPromptText} injectSeed={injectSeed}
               refs={refs} onAddLocalFiles={handleAddLocalFiles} onAddLibraryItems={handleAddLibraryItems}
               onRemoveRef={handleRemoveRef} issues={issues}
               onApplyTemplate={handleApplyTemplate}
-              onEnhance={handleEnhance} onUndoEnhance={handleUndoEnhance} canUndo={undoText != null}
               onOpenLibrary={tag => setLibraryTag(tag)}
-              imageRole={imageRole} setImageRole={setImageRole}
               videoModel={videoModel} setVideoModel={handleModelChange}
               aspect={aspect} setAspect={setAspect} duration={duration} setDuration={setDuration}
               magic={magic} setMagic={setMagic}
@@ -821,9 +1126,9 @@ export function ModelPicker({ value, onChange }) {
 
 /* ════ 输入卡：整个视频生成就这一步，写完直接进任务中心 ════ */
 function Step1InputIdea({
-  promptText, setPromptText, refs, onAddLocalFiles, onAddLibraryItems, onRemoveRef, issues,
-  onApplyTemplate, onOpenLibrary, onEnhance, onUndoEnhance, canUndo,
-  imageRole, setImageRole, videoModel, setVideoModel, submitting, magic, setMagic,
+  promptText, setPromptText, injectSeed, refs, onAddLocalFiles, onAddLibraryItems, onRemoveRef, issues,
+  onApplyTemplate, onOpenLibrary,
+  videoModel, setVideoModel, submitting, magic, setMagic,
   aspect, setAspect, duration, setDuration, count, setCount, onNext,
 }) {
   const cfg = modelCfg(videoModel);
@@ -845,7 +1150,7 @@ function Step1InputIdea({
       </div>
 
       <div className="composer">
-        {/* 已挂载素材 + 主体/参考切换。超出当前模型上限的那几个描红，用户一眼知道该删哪个 */}
+        {/* 已挂载素材。超出当前模型上限的那几个描红，用户一眼知道该删哪个 */}
         {refCount > 0 && (
           <div className="idea-dock">
             <div className="idea-dock-imgs">
@@ -868,38 +1173,29 @@ function Step1InputIdea({
                 );
               }))}
             </div>
-            {refs.image.length > 0 && (cfg.imageRequired
-              ? <span className="idea-dock-tag" title={`${videoModel} 的图就是视频第一帧`}>首帧图</span>
-              : (
-                <div className="idea-role-toggle" title="这张图怎么用">
-                  <button type="button" className={`idea-role-btn ${imageRole === 'subject' ? 'active' : ''}`} onClick={() => setImageRole('subject')}>让它动</button>
-                  <button type="button" className={`idea-role-btn ${imageRole === 'ref' ? 'active' : ''}`} onClick={() => setImageRole('ref')}>当参考</button>
-                </div>
-              ))}
+            {/* 图怎么用由模型定，不劳用户选：这一档的图就是视频第一帧，说明一下即可 */}
+            {refs.image.length > 0 && cfg.imageRequired && (
+              <span className="idea-dock-tag" title={`${videoModel} 的图就是视频第一帧`}>首帧图</span>
+            )}
           </div>
         )}
 
-        <AutoTextarea
+        {/* 输入 @ 可引用已挂载的素材，插进去的是带缩略图的 chip（和第二步脚本里那套一致）。
+            这里不设硬性 maxLength：超了照实报字数并标红，由底栏拦住，别替用户砍字。 */}
+        <ComposerEditor
           value={promptText}
           onChange={setPromptText}
           onSubmit={() => { if (!blocked) onNext(); }}
-          maxLength={CHAR_MAX}
-          minRows={2}
+          refs={refs}
+          seed={injectSeed}
           maxHeight={240}
-          placeholder="描述你想生成的视频…"
+          placeholder="描述你想生成的视频，输入 @ 引用参考素材…"
+          onPickMore={() => setAssetLibOpen(true)}
         />
 
-        {/* 字数 + AI 扩写：照用户给的参考件，字数常驻左侧、扩写在右 */}
+        {/* 字数：超了照实报并标红，由底栏拦住 */}
         <div className="composer-meta">
           <span className={`composer-count ${overChars ? 'over' : ''}`}>{chars}/{CHAR_MAX}</span>
-          <span className="composer-meta-right">
-            {canUndo && (
-              <button type="button" className="composer-undo" onClick={onUndoEnhance}>撤销</button>
-            )}
-            <button type="button" className="composer-enhance" onClick={onEnhance} disabled={!promptText.trim()}>
-              <Wand2 size={12} strokeWidth={1.9} /> AI 扩写
-            </button>
-          </span>
         </div>
 
         {/* 拦截提示：紧贴底栏上方，说清楚差什么、要删几个（按钮同时是灰的） */}

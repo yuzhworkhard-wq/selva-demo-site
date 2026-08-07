@@ -315,6 +315,13 @@ export default function EmbedApp() {
   }, []);
 
   const curTask = taskStore.find(t => t.id === taskId) || null;
+  /* 裂变任务的基准任务：详情里「裂变来源」要放原视频缩略图 + 点开放大 + 它的任务 ID，
+     光靠 fanoutFrom 里那几个字段拿不到片子。taskStore 是 module 级的，只有这里够得着，
+     所以在这一层解析好再传下去（详情组件不该知道任务表长什么样）。
+     基准任务可能不在表里（种子没带上/被清过），那时候详情退回纯文字＋ID。 */
+  const baseTask = (curTask && curTask.fanoutFrom && curTask.fanoutFrom.taskId)
+    ? (taskStore.find(t => t.id === curTask.fanoutFrom.taskId) || null)
+    : null;
 
   return (
     <>
@@ -356,6 +363,7 @@ export default function EmbedApp() {
         curTask.toolName === '视频生成' ? (
           <VideoGenTaskDetail
             task={curTask}
+            baseTask={baseTask}
             onBack={() => closeClone(true)}
             onReEdit={() => reEdit(curTask)}
             onRegenerate={(i) => regenerate(curTask, i)}

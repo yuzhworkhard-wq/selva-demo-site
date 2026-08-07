@@ -4564,6 +4564,92 @@ body {
 }
 .composer-input::placeholder { color: var(--text-muted); }
 
+/* ══ 第一步输入框：contenteditable 版（支持 @素材 chip） ══
+   textarea 装不下 DOM 节点，所以这一支是 div[contenteditable]。
+   视觉必须跟 textarea 那版一模一样：同样的 padding / 字号 / 行高，
+   外加 textarea 免费给的两样东西——placeholder 和至少两行的初始高度。 */
+.composer-editor-wrap { position: relative; }
+.composer-input--rich {
+  min-height: calc(1.65em * 2 + 8px);   /* = 原 minRows=2 的高度，写完第一行框子不会抖 */
+  overflow-y: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+/* contenteditable 没有原生 placeholder，空的时候拿伪元素顶上。
+   :empty 不够用——浏览器在空编辑器里会自己留一个 <br>，那时 :empty 已经不成立了 */
+.composer-input--rich:empty::before,
+.composer-input--rich:has(> br:only-child)::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* 输入框里的素材 chip。沿用 .sb-tok 的配色和形状（同一个语义就该长同一个样），
+   只是这里的正文是 15px，chip 相应放大一档，跟着文字排版不显小 */
+.composer-tok {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 1px 8px 1px 3px; margin: 0 1px;
+  vertical-align: -4px;
+  background: var(--accent-subtle);
+  border: 1px solid rgba(97, 97, 255, 0.28);
+  border-radius: 7px;
+  font-size: 13px; line-height: 1.5;
+  color: var(--accent-hover);
+  white-space: nowrap; user-select: none;
+}
+.composer-tok img {
+  width: 18px; height: 18px; object-fit: cover; border-radius: 4px; flex-shrink: 0;
+}
+.composer-tok svg { flex-shrink: 0; margin-left: 4px; opacity: 0.9; }
+
+/* ══ @ 菜单 ══ 跟着光标定位（fixed，因为要能溢出卡片） */
+.at-menu {
+  position: fixed; z-index: 120;
+  min-width: 216px; max-width: 300px;
+  padding: 4px;
+  background: var(--bg-elevated, #26272c);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.46);
+}
+.at-menu-list { max-height: 232px; overflow-y: auto; scrollbar-width: thin; }
+.at-menu-item {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 6px 8px;
+  border: none; border-radius: 7px; background: transparent;
+  font-family: var(--font); text-align: left; cursor: pointer;
+  transition: background var(--transition);
+}
+.at-menu-item.active { background: var(--bg-hover, rgba(255, 255, 255, 0.06)); }
+.at-menu-thumb {
+  width: 26px; height: 26px; flex-shrink: 0;
+  object-fit: cover; border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.at-menu-thumb--icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-secondary);
+}
+.at-menu-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.at-menu-text b { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.at-menu-text em {
+  font-size: 11px; font-style: normal; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.at-menu-empty { padding: 10px 10px 9px; font-size: 12px; color: var(--text-muted); }
+/* 分隔线两端接到菜单内容边缘（负 margin 抵掉容器 padding），不浮在留白里 */
+.at-menu-more {
+  display: flex; align-items: center; gap: 6px;
+  width: calc(100% + 8px); margin: 4px -4px -4px;
+  padding: 8px 12px;
+  border: none; border-top: 1px solid var(--border);
+  border-radius: 0 0 9px 9px; background: transparent;
+  font-family: var(--font); font-size: 12px; color: var(--text-secondary);
+  cursor: pointer; transition: background var(--transition), color var(--transition);
+}
+.at-menu-more:hover { background: var(--bg-hover, rgba(255, 255, 255, 0.06)); color: var(--text-primary); }
+
 /* 细线两端接到卡片内容边缘（即底栏 + 号左缘与发送键右缘），不缩进浮在 padding 里 */
 .composer-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -4584,29 +4670,12 @@ body {
 /* 换到字数上限更小的模型后，原文可能已经超了：字数照实报并标橙，与底栏上方的拦截提示同色 */
 .composer-count.over { color: var(--warning); }
 
-/* ── 文本域下的轻行：左＝字数，右＝扩写（形态照用户给的参考件）。
+/* ── 文本域下的轻行：只有字数。
    不加分隔线——这个框的原则是「视觉只剩一个能打字的框」 ── */
 .composer-meta {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 10px 6px 0; min-height: 24px;
 }
-.composer-meta-right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
-.composer-enhance {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 4px 7px; border: none; border-radius: var(--radius-md);
-  background: transparent; cursor: pointer;
-  font-family: var(--font); font-size: 12px; color: var(--text-secondary);
-  transition: var(--transition);
-}
-.composer-enhance:hover:not(:disabled) { background: var(--bg-elevated); color: var(--text-primary); }
-.composer-enhance:hover:not(:disabled) svg { color: var(--accent); }
-.composer-enhance:disabled { color: var(--text-muted); opacity: 0.5; cursor: not-allowed; }
-.composer-enhance svg { color: var(--text-muted); transition: var(--transition); }
-.composer-undo {
-  padding: 4px 6px; border: none; border-radius: var(--radius-md); background: transparent; cursor: pointer;
-  font-family: var(--font); font-size: 12px; color: var(--text-muted); transition: var(--transition);
-}
-.composer-undo:hover { color: var(--text-primary); background: var(--bg-elevated); }
 
 /* ── Magic Prompt：形态照用户给的参考件（药丸 + 图标 + 状态字），
    但尺寸/字号/hover 一律对齐旁边的 .idea-pick-btn，不自成一套 ── */
@@ -4807,7 +4876,7 @@ body {
 }
 .mp-ver:hover .mp-chip, .mp-ver.sel .mp-chip { color: var(--text-secondary); }
 
-/* 挂载图片 + 主体/参考切换 */
+/* 挂载素材 chip */
 .idea-dock { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 6px 12px; }
 .idea-dock-imgs { display: flex; gap: 8px; flex-wrap: wrap; }
 .idea-img-chip { position: relative; width: 48px; height: 48px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-light); }
@@ -4818,10 +4887,6 @@ body {
   border: none; border-radius: 50%; background: rgba(0, 0, 0, 0.65); color: #fff; cursor: pointer;
 }
 .idea-chip-close:hover { background: var(--danger); }
-.idea-role-toggle { display: inline-flex; gap: 2px; padding: 3px; flex-shrink: 0; background: var(--bg-page); border: 1px solid var(--border); border-radius: 9px; }
-.idea-role-btn { padding: 6px 12px; border: none; border-radius: 6px; background: transparent; cursor: pointer; font-size: 12px; color: var(--text-secondary); transition: var(--transition); }
-.idea-role-btn:hover:not(.active) { color: var(--text-primary); }
-.idea-role-btn.active { background: var(--accent); color: #fff; }
 /* 参考视频 / 参考音频：没有缩略图可看，只能报文件名，尺寸与图片 chip 对齐 */
 .idea-file-chip {
   display: inline-flex; align-items: center; gap: 6px;
@@ -5360,18 +5425,65 @@ body {
   box-decoration-break: clone;
 }
 
-/* 裂变来路：这批不是从零写的，是从别的任务某一条变出来的 */
+/* 裂变来路：这批不是从零写的，是从别的任务某一条变出来的。
+   左边一张基准片缩略图（点开放大），右边两行文字——「裂变自视频 2」光有序号认不出是哪条，
+   得能看见片子、也能拿到来源任务 ID */
 .vtd-from {
   flex-shrink: 0;
-  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  display: flex; align-items: stretch; gap: 11px;
   margin-bottom: 16px; padding: 10px 12px;
   background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md);
   font-size: 12.5px; color: var(--text-secondary);
 }
-.vtd-from > svg { color: var(--accent); flex-shrink: 0; }
+/* 缩略图：9:16 竖片，按两行文字的高度定尺寸 */
+.vtd-from-th {
+  position: relative; flex-shrink: 0;
+  width: 32px; height: 50px; padding: 0;
+  border-radius: 5px; overflow: hidden;
+  background: #000; border: 1px solid var(--border-light);
+  cursor: pointer; transition: border-color var(--transition);
+}
+.vtd-from-th:hover { border-color: var(--accent); }
+.vtd-from-th video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vtd-from-th-play {
+  position: absolute; inset: 0; margin: auto;
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; background: rgba(10, 11, 11, 0.55);
+  border-radius: 50%; pointer-events: none; transition: background var(--transition);
+}
+.vtd-from-th:hover .vtd-from-th-play { background: var(--accent); }
+/* 基准任务不在表里：位子留着，但别装成有片可看的样子 */
+.vtd-from-th--none {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-elevated); border-style: dashed; cursor: default;
+  color: var(--text-muted); font-size: 12px;
+}
+.vtd-from-main {
+  display: flex; flex-direction: column; justify-content: center; gap: 5px;
+  flex: 1; min-width: 0;
+}
+.vtd-from-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.vtd-from-line > svg { color: var(--accent); flex-shrink: 0; }
+.vtd-from-line--sub { gap: 7px; font-size: 11.5px; color: var(--text-muted); }
 .vtd-from b { font-weight: 600; color: var(--text-primary); }
 .vtd-from-dims { color: var(--accent-hover); }
 .vtd-from-steer { font-style: normal; color: var(--text-muted); }
+.vtd-from-idk { flex-shrink: 0; }
+/* 任务 ID 可点＝可复制：等宽字体，拿去别处对号时一眼能核 */
+.vtd-from-id {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 1px 7px; border-radius: 4px;
+  background: var(--bg-elevated); border: 1px solid var(--border-light);
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 11.5px; color: var(--text-secondary);
+  cursor: pointer; transition: var(--transition);
+}
+.vtd-from-id:hover { color: var(--text-primary); border-color: var(--accent); }
+.vtd-from-id svg { color: var(--text-muted); }
+.vtd-from-id:hover svg { color: var(--accent); }
+.vtd-from-id.is-ok, .vtd-from-id.is-ok svg { color: var(--accent-hover); }
+.vtd-from-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 基准是模型看片反解的，不是用户写的——来源得标出来 */
 .vtd-from-read {
   display: inline-flex; align-items: center; gap: 4px;
@@ -5380,6 +5492,25 @@ body {
   font-size: 11.5px; color: var(--text-muted); cursor: default;
 }
 .vtd-from-read svg { color: var(--text-secondary); }
+
+/* 基准视频放大：缩略图只够认出是哪条，比对得看得清。面板规范同其它弹窗 */
+.vtd-base-dialog {
+  width: 100%; max-width: 560px;
+  padding: 22px 24px 20px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.7);
+  animation: slideUp 200ms ease;
+}
+.vtd-base-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.vtd-base-head .resume-desc { margin-top: 6px; }
+.vtd-base-stage { display: flex; justify-content: center; margin-top: 18px; }
+.vtd-base-stage video {
+  width: auto; max-width: 100%;
+  height: min(58vh, 520px);
+  background: #000; border-radius: 12px; display: block;
+}
 
 /* 视频理解：读不出基准时先看片。为什么要等这一下，当场说清楚 */
 .fo-read {

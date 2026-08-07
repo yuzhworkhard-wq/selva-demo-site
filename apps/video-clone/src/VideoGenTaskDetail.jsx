@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import {
   ArrowLeft, RefreshCw, Download, Pencil, GitBranch, Eye,
-  Copy, Check, Loader2, Play, FileText, Info, AlertTriangle,
+  Copy, Check, Loader2, Play, FileText, Info, AlertTriangle, X,
 } from 'lucide-react';
 import { notifyHostModal } from './hostModal';
 import { FanoutDialog } from './FanoutDialog';
@@ -39,21 +39,26 @@ function Vid({ src, label }) {
    逐条脚本原先藏着不露（"后台产物"），但有 Magic Prompt 这一层在，
    "我写的" 和 "机器跑的" 之间隔了一次改写，不给看就没法归因废片。
    两份都是长内容，所以是并列 tab 而不是折叠——挤在一栏里谁也读不下去。 */
-export function VideoGenTaskDetail({ task, onBack, onReEdit, onRegenerate, onFanout }) {
+export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegenerate, onFanout }) {
   const [active, setActive] = useState(0);
   const [tab, setTab] = useState('input');           // input=你的输入 | script=本条提示词
   const [srcCopied, setSrcCopied] = useState(false);
+  const [idCopied, setIdCopied] = useState(false);   // 基准任务 ID 复制回执
   const [toast, setToast] = useState(null);
   const [failOpen, setFailOpen] = useState(false);   // 失败原因弹窗（红条点开才出，不自动弹）
+  const [baseOpen, setBaseOpen] = useState(false);   // 基准视频放大看（缩略图点开）
   const [fanoutOpen, setFanoutOpen] = useState(false);
   const [railEdge, setRailEdge] = useState({ l: false, r: false });  // 轨道两端还有没有内容（决定边缘渐隐）
   const srcTimer = useRef(null);
   const toastTimer = useRef(null);
+  const idTimer = useRef(null);
   const colRef = useRef(null);
   const stageRef = useRef(null);
   const railRef = useRef(null);
 
-  useEffect(() => () => { clearTimeout(toastTimer.current); clearTimeout(srcTimer.current); }, []);
+  useEffect(() => () => {
+    clearTimeout(toastTimer.current); clearTimeout(srcTimer.current); clearTimeout(idTimer.current);
+  }, []);
 
   // 弹窗开着时同步宿主遮罩，嵌入态下才有「全视口居中」的观感
   useEffect(() => {
@@ -63,6 +68,15 @@ export function VideoGenTaskDetail({ task, onBack, onReEdit, onRegenerate, onFan
     window.addEventListener('keydown', onKey);
     return () => { window.removeEventListener('keydown', onKey); notifyHostModal(false); };
   }, [failOpen]);
+
+  // 基准视频放大：同一套弹窗规范（宿主遮罩 + Escape 关）
+  useEffect(() => {
+    if (!baseOpen) return;
+    notifyHostModal(true);
+    const onKey = (e) => { if (e.key === 'Escape') setBaseOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); notifyHostModal(false); };
+  }, [baseOpen]);
 
   // variants 只用来决定这批有几条视频，它里面的脚本正文不再露面
   const clips = (task && task.variants && task.variants.length) ? task.variants : [null];
@@ -74,7 +88,7 @@ export function VideoGenTaskDetail({ task, onBack, onReEdit, onRegenerate, onFan
   /* 换任务＝换一批片子，选中条和 tab 都得归零。
      组件在任务之间是复用的（宿主换 id 不重新挂载），不重置的话会带着上一个任务的
      选中条和「提示词」tab 进新任务——用户点开新任务，看到的是第 3 条的脚本页。 */
-  useEffect(() => { setActive(0); setTab('input'); }, [task && task.id]);
+  useEffect(() => { setActive(0); setTab('input'); setBaseOpen(false); }, [task && task.id]);
 
   /* 成片位是「按高度定宽」的（9:16，高度吃剩余空间），实宽只有渲染后才知道。
      量出来写进 --vtd-vw，缩略图轨/红条/标题行都用这一个宽度——上下不再一个宽一个窄。
@@ -171,6 +185,11 @@ export function VideoGenTaskDetail({ task, onBack, onReEdit, onRegenerate, onFan
   const needsRead = !(ownDims && ownDims.length) || sameScript;
   const fanoutBlocked = generating || isFailed(active);
 
+  /* 基准片：裂变来源那块要拿它做缩略图与放大预览。
+     基准任务还在生成中就没有成片（cloneUrl 为空），这时候退回它的原始素材，
+     两个都没有就不摆缩略图——宁可不给，也别摆个放不出东西的黑框。 */
+  const baseVideoUrl = (baseTask && (baseTask.cloneUrl || baseTask.videoUrl)) || null;
+
   const copyBtn = (tab === 'script' ? scriptHtml : task.sourceText) ? (
     /* 复制当前 tab 上这一份：输入贴回输入框接着用，脚本拿去核对模型侧 */
     <span className="vtd-tab-copy">
@@ -258,6 +277,20 @@ export function VideoGenTaskDetail({ task, onBack, onReEdit, onRegenerate, onFan
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(done).catch(done);
+    } else done();
+  }
+
+  // 基准任务 ID：要拿去跟别处对号（任务中心搜、跟研发报问题），能一键复制才算给到了
+  function copyBaseId() {
+    const id = task.fanoutFrom && task.fanoutFrom.taskId;
+    if (!id) return;
+    const done = () => {
+      setIdCopied(true);
+      clearTimeout(idTimer.current);
+      idTimer.current = setTimeout(() => setIdCopied(false), 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(id).then(done).catch(done);
     } else done();
   }
 
@@ -436,19 +469,45 @@ export function VideoGenTaskDetail({ task, onBack, onReEdit, onRegenerate, onFan
 
             {tab === 'input' ? (
               <>
-                {/* 这批是从别的任务裂变出来的：来路写在最前面，否则「我当初写的」跟成片对不上号 */}
+                {/* 这批是从别的任务裂变出来的：来路写在最前面，否则「我当初写的」跟成片对不上号。
+                    只写「裂变自视频 2」是一句认不出的话——用户手里几十条任务，光凭序号想不起是哪条片。
+                    所以摆基准片的缩略图（点开放大能看），并把基准任务 ID 一并给出（可复制，去任务中心对号）。 */}
                 {task.fanoutFrom && (
                   <div className="vtd-from">
-                    <GitBranch size={12} strokeWidth={1.8} />
-                    裂变自 <b>视频 {task.fanoutFrom.baseIndex + 1}</b>
-                    <span className="vtd-from-dims">只变 {task.fanoutFrom.dimLabels.join(' / ')}</span>
-                    {task.fanoutFrom.steer && <em className="vtd-from-steer">「{task.fanoutFrom.steer}」</em>}
-                    {/* 基准是模型看片反解的，不是用户写的——来源不说清楚就成了无主的事实 */}
-                    {task.fanoutFrom.readBase && (
-                      <span className="vtd-from-read" title="那批没开 Magic Prompt（或是历史任务），N 条提示词相同，基准由画面分析反解">
-                        <Eye size={11} strokeWidth={1.9} /> 基准来自画面分析
-                      </span>
+                    {baseVideoUrl ? (
+                      <button type="button" className="vtd-from-th" onClick={() => setBaseOpen(true)}
+                        title={`放大查看基准视频 ${task.fanoutFrom.baseIndex + 1}`}>
+                        <video src={baseVideoUrl} preload="metadata" muted playsInline
+                          onLoadedData={e => { try { e.currentTarget.currentTime = 0.1 + task.fanoutFrom.baseIndex * 0.6; } catch {} }} />
+                        <span className="vtd-from-th-play"><Play size={11} /></span>
+                      </button>
+                    ) : (
+                      // 基准任务不在表里（种子没带上/会话清过）：位子留着但说明白，别摆个黑框让人以为是坏图
+                      <span className="vtd-from-th vtd-from-th--none" title="基准任务不在当前列表中，无法预览">—</span>
                     )}
+                    <div className="vtd-from-main">
+                      <div className="vtd-from-line">
+                        <GitBranch size={12} strokeWidth={1.8} />
+                        裂变自 <b>视频 {task.fanoutFrom.baseIndex + 1}</b>
+                        <span className="vtd-from-dims">只变 {task.fanoutFrom.dimLabels.join(' / ')}</span>
+                        {task.fanoutFrom.steer && <em className="vtd-from-steer">「{task.fanoutFrom.steer}」</em>}
+                        {/* 基准是模型看片反解的，不是用户写的——来源不说清楚就成了无主的事实 */}
+                        {task.fanoutFrom.readBase && (
+                          <span className="vtd-from-read" title="那批没开 Magic Prompt（或是历史任务），N 条提示词相同，基准由画面分析反解">
+                            <Eye size={11} strokeWidth={1.9} /> 基准来自画面分析
+                          </span>
+                        )}
+                      </div>
+                      <div className="vtd-from-line vtd-from-line--sub">
+                        <span className="vtd-from-idk">来源任务</span>
+                        <button type="button" className={`vtd-from-id ${idCopied ? 'is-ok' : ''}`}
+                          onClick={copyBaseId} title="复制来源任务 ID">
+                          {task.fanoutFrom.taskId}
+                          {idCopied ? <Check size={11} strokeWidth={2} /> : <Copy size={11} strokeWidth={1.9} />}
+                        </button>
+                        {baseTask && baseTask.name && <span className="vtd-from-name">{baseTask.name}</span>}
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -520,6 +579,31 @@ export function VideoGenTaskDetail({ task, onBack, onReEdit, onRegenerate, onFan
           task={task} baseIndex={active} needsRead={needsRead}
           onClose={() => setFanoutOpen(false)} onSubmit={doFanout}
         />
+      )}
+
+      {/* 基准视频放大：缩略图只够认出「哦是那条」，真要比对得看得清。
+          用同一套弹窗规范（遮罩点空白关 / Escape 关），视频给控制条——
+          这里的动作是「看片比对」，不是本页那种点一下播放的预览位。 */}
+      {baseOpen && baseVideoUrl && (
+        <div className="resume-overlay" onClick={() => setBaseOpen(false)}>
+          <div className="vtd-base-dialog" role="dialog" aria-modal="true" aria-label="基准视频"
+            onClick={e => e.stopPropagation()}>
+            <div className="vtd-base-head">
+              <div>
+                <h3 className="resume-title">裂变基准 · 视频 {task.fanoutFrom.baseIndex + 1}</h3>
+                <p className="resume-desc">
+                  来源任务 {task.fanoutFrom.taskId}
+                  {baseTask && baseTask.name ? ` · ${baseTask.name}` : ''}
+                </p>
+              </div>
+              <button className="icon-btn" onClick={() => setBaseOpen(false)} title="关闭"><X size={18} /></button>
+            </div>
+            <div className="vtd-base-stage">
+              <video src={baseVideoUrl} controls autoPlay playsInline
+                aria-label={`基准视频 ${task.fanoutFrom.baseIndex + 1}`} />
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 失败原因弹窗：面板规范对齐「检测到未完成的操作」；主按钮＝一键重试失败的那几条 */}
