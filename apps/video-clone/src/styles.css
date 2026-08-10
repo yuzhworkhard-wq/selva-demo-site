@@ -5583,7 +5583,7 @@ body {
 
 /* 自动裂变：收进输入卡底栏，与上传入口并列；尺寸沿用底栏 picker */
 .fo-preset-control {
-  position: relative; display: inline-flex; align-items: center;
+  position: relative; display: inline-flex; align-items: center; gap: 8px;
   margin-left: 2px; color: var(--text-secondary);
 }
 .fo-preset-control.is-on { color: var(--text-primary); }
@@ -5616,6 +5616,7 @@ body {
   text-align: left; font: inherit; cursor: pointer;
 }
 .fo-preset-option:hover, .fo-preset-option.active { background: var(--accent-subtle); color: var(--text-primary); }
+.fo-preset-option + .fo-preset-option { margin-top: 4px; }
 .fo-preset-option-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .fo-preset-option-copy b { font-size: 12px; font-weight: 600; }
 .fo-preset-option-copy small { font-size: 11px; line-height: 1.4; color: var(--text-muted); }
@@ -5638,7 +5639,7 @@ body {
   width: 0; opacity: 0; transform: translateY(10px); pointer-events: none;
 }
 .composer--fanout-auto .composer-bar {
-  margin-top: 8px; padding-top: 12px; border-top-color: transparent;
+  margin-top: 0; padding-top: 0; border-top-color: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {
