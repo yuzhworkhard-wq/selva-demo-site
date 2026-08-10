@@ -46,7 +46,7 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
   const [count, setCount] = useState(4);
   /* 裂变档位：用户懒得输入修改内容时，可直接选择档位一键裂变。
      档位决定裂变幅度——初级只换人物/场景，中级加上故事大纲/关键话术，高级则抽象创作思路 */
-  const [preset, setPreset] = useState(null); // null | 'basic' | 'medium' | 'advanced'
+  const [preset, setPreset] = useState('basic'); // null | 'basic' | 'medium' | 'advanced'
   const [sending, setSending] = useState(false);
   /* 参考素材：跟第一步那张输入卡同一套入口（本地上传 / 资源库），同一套模型配额。
      裂变时最常见的动作就是「换成这张脸/这个场景」——没有图，那句话说不清楚。 */
@@ -60,6 +60,14 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
   const setRefs = { image: setRefImages, video: setRefVideos, audio: setRefAudios };
 
   const varyKeys = useMemo(() => steerToDims(steer).map(d => d.key), [steer]);
+
+  const PRESET_LEVELS = [
+    { value: 'basic', label: '初级', description: '保持主题，仅调整人物、场景或视觉呈现。' },
+    { value: 'medium', label: '中级', description: '保留核心信息，重组叙事结构与关键表达。' },
+    { value: 'advanced', label: '高级', description: '保留创作目标，重新构建内容策略与表达方式。' },
+  ];
+  const presetIndex = Math.max(0, PRESET_LEVELS.findIndex(level => level.value === preset));
+  const clearPresetForInput = () => { if (preset) setPreset(null); };
 
   // 弹窗开着时同步宿主遮罩，嵌入态下才有「全视口居中」的观感
   useEffect(() => {
@@ -139,46 +147,40 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
           {!reading && <span className="fo-base-tail">没说到的部分逐字沿用</span>}
         </div>
 
-        {/* 裂变档位选择器：用户可以直接选择档位一键裂变，不用手动输入 */}
+        {/* 裂变档位与自定义指令互斥：选择档位时不需要额外描述 */}
         <div className="fo-presets">
           <span className="fo-presets-label">裂变档位</span>
-          <div className="fo-presets-opts">
-            <button
-              type="button"
-              className={`fo-preset ${preset === 'basic' ? 'active' : ''}`}
-              onClick={() => setPreset(preset === 'basic' ? null : 'basic')}
-              title="换人物、换场景（只换新的参考图）"
-            >
-              <span className="fo-preset-label">初级</span>
-              <span className="fo-preset-bar">
-                <span className="fo-preset-fill" style={{ width: '33%' }}></span>
-              </span>
-              <span className="fo-preset-tip">老脚本——换人物、换场景（只换新的参考图）——新视频</span>
-            </button>
-            <button
-              type="button"
-              className={`fo-preset ${preset === 'medium' ? 'active' : ''}`}
-              onClick={() => setPreset(preset === 'medium' ? null : 'medium')}
-              title="提炼人物小传、故事大纲、关键话术（一个主持人采访一个宝妈，了解他为什么能在如此艰难的情况下养活孩子，原来是因为xxx）——新脚本——新视频"
-            >
-              <span className="fo-preset-label">中级</span>
-              <span className="fo-preset-bar">
-                <span className="fo-preset-fill" style={{ width: '66%' }}></span>
-              </span>
-              <span className="fo-preset-tip">老脚本——提炼人物小传、故事大纲、关键话术（一个主持人采访一个宝妈，了解他为什么能在如此艰难的情况下养活孩子，原来是因为xxx）——新脚本——新视频</span>
-            </button>
-            <button
-              type="button"
-              className={`fo-preset ${preset === 'advanced' ? 'active' : ''}`}
-              onClick={() => setPreset(preset === 'advanced' ? null : 'advanced')}
-              title="抽象创作思路（国绕底层人民的生活不易进行赚钱引导）、关键话术——新脚本——新视频"
-            >
-              <span className="fo-preset-label">高级</span>
-              <span className="fo-preset-bar">
-                <span className="fo-preset-fill" style={{ width: '100%' }}></span>
-              </span>
-              <span className="fo-preset-tip">老脚本——抽象创作思路（国绕底层人民的生活不易进行赚钱引导）、关键话术——新脚本——新视频</span>
-            </button>
+          <div className="fo-preset-slider-wrap">
+            <div className={`fo-preset-slider ${!preset ? 'is-custom' : ''}`} style={{ '--fo-preset-position': `${presetIndex * 50}%` }}>
+              <input
+                type="range" min="0" max="2" step="1" value={presetIndex}
+                aria-label="裂变档位"
+                onChange={e => setPreset(PRESET_LEVELS[Number(e.target.value)].value)}
+              />
+              <div className="fo-preset-track" aria-hidden="true">
+                <span className="fo-preset-track-fill" />
+                {PRESET_LEVELS.map((level, index) => (
+                  <button
+                    key={level.value}
+                    type="button"
+                    className={`fo-preset-stop ${preset === level.value ? 'active' : ''}`}
+                    style={{ left: `${index * 50}%` }}
+                    onClick={() => setPreset(level.value)}
+                    title={level.description}
+                    aria-label={`${level.label}：${level.description}`}
+                  >
+                    <span className="fo-preset-dot" />
+                    <span className="fo-preset-stop-label">{level.label}</span>
+                    <span className="fo-preset-tip">{level.description}</span>
+                  </button>
+                ))}
+                <span className="fo-preset-thumb" />
+              </div>
+            </div>
+            <div className="fo-preset-current">
+              {!preset && <b>自定义指令</b>}
+              <span>{preset ? PRESET_LEVELS[presetIndex].description : '输入文字描述本次裂变方向。'}</span>
+            </div>
           </div>
         </div>
 
@@ -224,7 +226,9 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
           )}
 
           <AutoTextarea
-            value={steer} onChange={setSteer} onSubmit={submit}
+            value={steer} onFocus={clearPresetForInput}
+            onChange={value => { clearPresetForInput(); setSteer(value); }} onSubmit={submit}
+            readOnly={!!preset}
             minRows={2} maxHeight={140} maxLength={200}
             placeholder={reading ? '正在分析画面…' : '想怎么变？比如：换成这张脸、场景挪到户外'}
           />
