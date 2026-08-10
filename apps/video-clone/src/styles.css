@@ -5603,7 +5603,6 @@ body {
 }
 .fo-preset-control.is-on .fo-preset-switch { background: var(--accent); }
 .fo-preset-control.is-on .fo-preset-switch i { left: 12px; background: #fff; }
-.fo-preset-divider { width: 1px; height: 16px; margin: 0 1px; background: var(--border-light); }
 .fo-preset-value { min-width: 48px; justify-content: center; }
 .fo-preset-menu {
   position: absolute; left: 0; bottom: calc(100% + 6px); width: 258px; padding: 5px;
@@ -5631,10 +5630,19 @@ body {
 .fo-steer-collapse.is-collapsed {
   max-height: 0; opacity: 0; transform: translateY(10px); pointer-events: none;
 }
-.composer--fanout-auto .composer-bar { margin-top: 8px; padding-top: 12px; }
+.fo-ref-collapse {
+  display: inline-flex; width: 32px; opacity: 1; overflow: hidden; transform: translateY(0);
+  transition: width 220ms ease, opacity 160ms ease, transform 220ms ease;
+}
+.fo-ref-collapse.is-collapsed {
+  width: 0; opacity: 0; transform: translateY(10px); pointer-events: none;
+}
+.composer--fanout-auto .composer-bar {
+  margin-top: 8px; padding-top: 12px; border-top-color: transparent;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .fo-steer-collapse, .composer-bar, .fo-preset-switch, .fo-preset-switch i { transition: none; }
+  .fo-steer-collapse, .fo-ref-collapse, .composer-bar, .fo-preset-switch, .fo-preset-switch i { transition: none; }
 }
 
 /* 弹窗里的输入卡不受首页那套居中/限宽约束，撑满面板 */

@@ -52,7 +52,6 @@ function FanoutPresetControl({ value, onChange }) {
       </button>
       {value && (
         <>
-          <span className="fo-preset-divider" />
           <button type="button" className="fo-preset-value" onClick={() => setOpen(v => !v)}
             aria-expanded={open} aria-haspopup="menu" title={active.description}>
             <span>{active.label}</span><ChevronDown size={12} />
@@ -276,10 +275,12 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
 
           <div className="composer-bar">
             <div className="composer-bar-left">
-              <AddRefButton
-                model={model} refs={refs}
-                onAddFiles={addLocalFiles} onOpenLibrary={() => setLibOpen(true)}
-              />
+              <span className={`fo-ref-collapse ${preset ? 'is-collapsed' : ''}`} aria-hidden={!!preset}>
+                <AddRefButton
+                  model={model} refs={refs} disabled={!!preset}
+                  onAddFiles={addLocalFiles} onOpenLibrary={() => setLibOpen(true)}
+                />
+              </span>
               <FanoutPresetControl value={preset} onChange={setPresetMode} />
             </div>
             <div className="composer-bar-right">

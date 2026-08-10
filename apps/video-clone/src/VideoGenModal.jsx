@@ -881,7 +881,7 @@ export function Stepper({ value, onChange, min = 1, max = COUNT_MAX, title }) {
    参考图、参考视频、参考音频不再各开一个上传口（那是让用户替系统分类）：
    本地上传一个文件框收全部类型，按 file.type 自己归类；资源库则按角色/图片/视频三类去挑。
    模型的配额约束不变，摆在菜单底部一行看完，满了的入口直接灰掉。 ── */
-export function AddRefButton({ model, refs, onAddFiles, onOpenLibrary }) {
+export function AddRefButton({ model, refs, onAddFiles, onOpenLibrary, disabled = false }) {
   const cfg = modelCfg(model);
   const kinds = REF_KINDS.filter(k => cfg.limits[k.key] > 0);
   const [open, setOpen] = useState(false);
@@ -896,7 +896,7 @@ export function AddRefButton({ model, refs, onAddFiles, onOpenLibrary }) {
     document.addEventListener('keydown', esc);
     return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
   }, [open]);
-  useEffect(() => { setOpen(false); }, [model]);   // 换了模型这张单子就过期了
+  useEffect(() => { setOpen(false); }, [model, disabled]);   // 换模型或禁用后，这张单子就过期了
 
   const allFull = kinds.every(k => refs[k.key].length >= cfg.limits[k.key]);
   // 资源库只有角色/图片/视频；音频只能本地上传，所以只收音频的模型不给资源库入口
@@ -911,9 +911,9 @@ export function AddRefButton({ model, refs, onAddFiles, onOpenLibrary }) {
         onChange={e => { if (e.target.files?.length) onAddFiles(e.target.files); e.target.value = ''; }}
       />
       <button
-        type="button" className="composer-icon-btn" disabled={allFull} aria-expanded={open}
+        type="button" className="composer-icon-btn" disabled={disabled || allFull} aria-expanded={open}
         onClick={() => setOpen(o => !o)}
-        title={allFull ? `${model} 的参考素材已达上限` : '添加参考素材'}
+        title={disabled ? '自动模式下不支持添加参考素材' : allFull ? `${model} 的参考素材已达上限` : '添加参考素材'}
       >
         <Plus size={18} />
       </button>
