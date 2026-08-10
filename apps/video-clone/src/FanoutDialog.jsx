@@ -44,6 +44,9 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
      让他先确认「你是说人物设定吗」是把系统的活推给用户干。 */
   const [model, setModel] = useState(task.model || 'Seedance 2.0');
   const [count, setCount] = useState(4);
+  /* 裂变档位：用户懒得输入修改内容时，可直接选择档位一键裂变。
+     档位决定裂变幅度——初级只换人物/场景，中级加上故事大纲/关键话术，高级则抽象创作思路 */
+  const [preset, setPreset] = useState(null); // null | 'basic' | 'medium' | 'advanced'
   const [sending, setSending] = useState(false);
   /* 参考素材：跟第一步那张输入卡同一套入口（本地上传 / 资源库），同一套模型配额。
      裂变时最常见的动作就是「换成这张脸/这个场景」——没有图，那句话说不清楚。 */
@@ -95,8 +98,8 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
   function cfgLimit(kind) { return modelCfg(model).limits[kind] || 0; }
   const refCount = refImages.length + refVideos.length + refAudios.length;
 
-  // 说了要变什么才发得出去（写一句话，或挂一张图指着说）
-  const blocked = (!steer.trim() && refCount === 0) || sending || reading;
+  // 说了要变什么才发得出去（写一句话，或挂一张图指着说，或选了档位）
+  const blocked = (!steer.trim() && refCount === 0 && !preset) || sending || reading;
   const submit = () => {
     if (blocked) return;
     setSending(true);
@@ -104,7 +107,7 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
     // 不能让下游再去读那份共用的 dims（那份读不出这一条）
     onSubmit({
       baseIndex, steer: steer.trim(), varyKeys, model, count, duration, baseDims,
-      readBase: needsRead,
+      readBase: needsRead, preset,
       images: refImages.map(x => x.url), refVideos, refAudios,
     });
   };
@@ -134,6 +137,49 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
           {/* 分析中时这里留空：下面那条横幅已经在说「正在分析画面」，
               同一句话在同一个弹窗里出现两遍是噪音 */}
           {!reading && <span className="fo-base-tail">没说到的部分逐字沿用</span>}
+        </div>
+
+        {/* 裂变档位选择器：用户可以直接选择档位一键裂变，不用手动输入 */}
+        <div className="fo-presets">
+          <span className="fo-presets-label">裂变档位</span>
+          <div className="fo-presets-opts">
+            <button
+              type="button"
+              className={`fo-preset ${preset === 'basic' ? 'active' : ''}`}
+              onClick={() => setPreset(preset === 'basic' ? null : 'basic')}
+              title="换人物、换场景（只换新的参考图）"
+            >
+              <span className="fo-preset-label">初级</span>
+              <span className="fo-preset-bar">
+                <span className="fo-preset-fill" style={{ width: '33%' }}></span>
+              </span>
+              <span className="fo-preset-tip">老脚本——换人物、换场景（只换新的参考图）——新视频</span>
+            </button>
+            <button
+              type="button"
+              className={`fo-preset ${preset === 'medium' ? 'active' : ''}`}
+              onClick={() => setPreset(preset === 'medium' ? null : 'medium')}
+              title="提炼人物小传、故事大纲、关键话术（一个主持人采访一个宝妈，了解他为什么能在如此艰难的情况下养活孩子，原来是因为xxx）——新脚本——新视频"
+            >
+              <span className="fo-preset-label">中级</span>
+              <span className="fo-preset-bar">
+                <span className="fo-preset-fill" style={{ width: '66%' }}></span>
+              </span>
+              <span className="fo-preset-tip">老脚本——提炼人物小传、故事大纲、关键话术（一个主持人采访一个宝妈，了解他为什么能在如此艰难的情况下养活孩子，原来是因为xxx）——新脚本——新视频</span>
+            </button>
+            <button
+              type="button"
+              className={`fo-preset ${preset === 'advanced' ? 'active' : ''}`}
+              onClick={() => setPreset(preset === 'advanced' ? null : 'advanced')}
+              title="抽象创作思路（国绕底层人民的生活不易进行赚钱引导）、关键话术——新脚本——新视频"
+            >
+              <span className="fo-preset-label">高级</span>
+              <span className="fo-preset-bar">
+                <span className="fo-preset-fill" style={{ width: '100%' }}></span>
+              </span>
+              <span className="fo-preset-tip">老脚本——抽象创作思路（国绕底层人民的生活不易进行赚钱引导）、关键话术——新脚本——新视频</span>
+            </button>
+          </div>
         </div>
 
         {/* 为什么要等这一下：这批没开 Magic Prompt（或是历史任务），N 条提示词一模一样，

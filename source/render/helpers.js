@@ -353,6 +353,15 @@ const VGEN_TASK_SEEDS = {
     // 基准批 magic=on，各条脚本本来就不同，基准从文字里读得出，不用先看片
     fanoutFrom: { taskId: 'T-20260805-C01', baseIndex: 0, steer: '只换个男女角色长相', varyKeys: ['character'] },
   },
+
+  /* 上传裂变：基准不是任务中心里的片子，是用户自己传上来的一段。
+     这一路没有来源任务可指，fanoutFrom 带 videoUrl 而不是 taskId，
+     详情里「来源任务」那行整行不出现（摆个空 ID 比不摆更让人犯嘀咕）。 */
+  'T-20260806-C01': {
+    sourceText: '拿这条竞品爆款当底：同样的节奏和镜头语言，换成我们自己的产品和场景重跑几条。',
+    images: [], aspect: '9:16', magic: 'on',
+    fanoutFrom: { videoUrl: 'test-clip.mp4', baseIndex: 0, steer: '换个场景和光线试试', varyKeys: ['setting', 'lighting'], readBase: true },
+  },
 };
 // 平台的任务状态词汇 → 子应用的（平台没有 done，用 completed）
 const VGEN_STATUS_TO_SUBAPP = { completed: 'done', partial: 'partial', failed: 'failed', generating: 'generating' };
@@ -403,6 +412,29 @@ function buildVGenTaskSeeds() {
 
 // ===== Mock Tasks =====
 const MOCK_TASKS = [
+  /* 上传裂变：基准是用户自己传的一段片子，不来自任务中心。
+     详情里「裂变自 你上传的视频」，来源任务那行不出现。 */
+  {
+    id: 'T-20260806-C01',
+    toolId: 'tool-video',
+    name: '视频生成 · 裂变 3 条',
+    status: 'completed',
+    source: 'toolbox',
+    toolName: '视频生成',
+    product: '—',
+    outputSummary: '3 条全部成功',
+    createdAt: '2026-08-06 10:42',
+    duration: '2 分 12 秒',
+    videoModel: 'Seedance 2.0',
+    outputTypes: ['video'],
+    ownerId: 'u1',
+    isCloneTask: true,
+    outputs: [
+      { name: '竞品同款_换场景_001.mp4', status: 'done', duration: '1 分 47 秒', actions: ['播放', '下载'] },
+      { name: '竞品同款_换场景_002.mp4', status: 'done', duration: '1 分 51 秒', actions: ['播放', '下载'] },
+      { name: '竞品同款_换场景_003.mp4', status: 'done', duration: '1 分 44 秒', actions: ['播放', '下载'] }
+    ]
+  },
   /* 走一遍工具箱最典型的一串动作：先生成 4 条，再拿第 1 条裂变 4 条。
      详情由 apps/video-clone 渲染，输入/参数见上面的 VGEN_TASK_SEEDS 同 id 条目。
      两条都是「4 条里挂了第 3 条」——跟工具现跑一批时的失败规则一致，

@@ -5343,8 +5343,15 @@ body {
   color: var(--text-secondary); cursor: default; transition: var(--transition);
 }
 .vtd-meta-more svg { color: var(--text-muted); transition: var(--transition); }
-.vtd-meta-more:hover, .vtd-meta-more:focus-visible { color: var(--text-primary); outline: none; }
-.vtd-meta-more:hover svg, .vtd-meta-more:focus-visible svg { color: var(--accent); }
+.vtd-meta-more:hover, .vtd-meta-more:focus-within { color: var(--text-primary); outline: none; }
+.vtd-meta-more:hover svg, .vtd-meta-more:focus-within svg { color: var(--accent); }
+/* 浮层跟触发行之间那 10px 空隙：鼠标横穿时两边都不 hover，浮层会当场收起。
+   里面已经有可点的复制按钮，不能让人够不着——用一条透明桥把空隙接上 */
+.vtd-meta-more::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 100%;
+  height: 10px; display: none;
+}
+.vtd-meta-more:hover::after { display: block; }
 /* 浮层向上开：这行在右栏底部，向下会顶出可视区 */
 .vtd-meta-pop {
   position: absolute; left: 0; bottom: calc(100% + 10px); z-index: 60;
@@ -5356,10 +5363,22 @@ body {
   transition: opacity var(--transition), transform var(--transition), visibility var(--transition);
 }
 .vtd-meta-more:hover .vtd-meta-pop,
-.vtd-meta-more:focus-visible .vtd-meta-pop { opacity: 1; visibility: visible; transform: translateY(0); }
+.vtd-meta-more:focus-within .vtd-meta-pop { opacity: 1; visibility: visible; transform: translateY(0); }
 .vtd-meta-row { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; }
 .vtd-meta-k { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
 .vtd-meta-v { font-size: 13px; color: var(--text-primary); text-align: right; }
+/* ID 类的值可点＝可复制：拿去任务中心搜、跟研发报问题，只让人肉眼抄一遍等于没给 */
+.vtd-copy-id {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 1px 7px; border-radius: 4px;
+  background: var(--bg-card); border: 1px solid var(--border-light);
+  font-family: 'SF Mono', 'Consolas', monospace; font-size: 12px;
+  cursor: pointer; transition: var(--transition);
+}
+.vtd-copy-id:hover { border-color: var(--accent); }
+.vtd-copy-id svg { color: var(--text-muted); flex-shrink: 0; }
+.vtd-copy-id:hover svg { color: var(--accent); }
+.vtd-copy-id.is-ok, .vtd-copy-id.is-ok svg { color: var(--accent-hover); }
 
 .vtd-source-imgs { display: flex; flex-wrap: wrap; gap: 8px; }
 .vtd-source-img {
@@ -5560,6 +5579,76 @@ body {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .fo-base-tail { margin-left: auto; flex-shrink: 0; font-size: 12px; color: var(--text-muted); }
+
+/* 裂变档位选择器 */
+.fo-presets {
+  display: flex; align-items: center; gap: 16px;
+  margin: 18px 0 20px; padding: 0 6px;
+}
+.fo-presets-label {
+  font-size: 13px; color: var(--text-secondary); white-space: nowrap;
+  flex-shrink: 0;
+}
+.fo-presets-opts {
+  display: flex; align-items: center; gap: 12px; flex: 1;
+}
+.fo-preset {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  flex: 1; padding: 12px 16px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer; transition: var(--transition);
+  font-family: var(--font);
+}
+.fo-preset:hover {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+.fo-preset.active {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.fo-preset-label {
+  font-size: 13px; font-weight: 500; color: var(--text-primary);
+}
+.fo-preset-bar {
+  width: 100%; height: 6px;
+  background: var(--border-light);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+.fo-preset-fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: linear-gradient(90deg, #6161ff 0%, #8b8bff 100%);
+  border-radius: 3px;
+  transition: var(--transition);
+}
+.fo-preset:hover .fo-preset-fill {
+  background: linear-gradient(90deg, #7272ff 0%, #9c9cff 100%);
+}
+.fo-preset.active .fo-preset-fill {
+  background: linear-gradient(90deg, #5050ff 0%, #7a7aff 100%);
+}
+.fo-preset-tip {
+  position: absolute; left: 50%; bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  width: max-content; max-width: 380px;
+  padding: 10px 14px;
+  background: var(--bg-elevated); border: 1px solid var(--border-light);
+  border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-size: 12px; line-height: 1.5; color: var(--text-secondary);
+  opacity: 0; visibility: hidden;
+  transition: opacity 160ms ease, visibility 160ms ease, transform 160ms ease;
+  transform: translateX(-50%) translateY(4px);
+  pointer-events: none; z-index: 100;
+}
+.fo-preset:hover .fo-preset-tip {
+  opacity: 1; visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
 
 /* 弹窗里的输入卡不受首页那套居中/限宽约束，撑满面板 */
 .composer--fanout { max-width: none; margin: 0; }

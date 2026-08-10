@@ -43,7 +43,7 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
   const [active, setActive] = useState(0);
   const [tab, setTab] = useState('input');           // input=你的输入 | script=本条提示词
   const [srcCopied, setSrcCopied] = useState(false);
-  const [idCopied, setIdCopied] = useState(false);   // 基准任务 ID 复制回执
+  const [idCopied, setIdCopied] = useState(null);    // 任务 ID 复制回执：'self' | 'base'
   const [toast, setToast] = useState(null);
   const [failOpen, setFailOpen] = useState(false);   // 失败原因弹窗（红条点开才出，不自动弹）
   const [baseOpen, setBaseOpen] = useState(false);   // 基准视频放大看（缩略图点开）
@@ -186,9 +186,20 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
   const fanoutBlocked = generating || isFailed(active);
 
   /* 基准片：裂变来源那块要拿它做缩略图与放大预览。
-     基准任务还在生成中就没有成片（cloneUrl 为空），这时候退回它的原始素材，
+     基准有两种来路——
+       · 从别的任务某一条裂的 → 有 taskId，片子去那条任务上取；
+         它还在生成中就没有成片（cloneUrl 为空），退回它的原始素材
+       · 用户自己传的一段视频 → 没有 taskId，片子就在 fanoutFrom.videoUrl 上，
+         这时候没有「来源任务」可指，那一行整行不出现
      两个都没有就不摆缩略图——宁可不给，也别摆个放不出东西的黑框。 */
-  const baseVideoUrl = (baseTask && (baseTask.cloneUrl || baseTask.videoUrl)) || null;
+  const fromTaskId = (task.fanoutFrom && task.fanoutFrom.taskId) || null;
+  const baseVideoUrl = fromTaskId
+    ? ((baseTask && (baseTask.cloneUrl || baseTask.videoUrl)) || null)
+    : ((task.fanoutFrom && task.fanoutFrom.videoUrl) || null);
+  // 上传的片子没有「视频 N」这个序号可言，别硬套一个让人回头去数
+  const baseLabel = task.fanoutFrom
+    ? (fromTaskId ? `视频 ${task.fanoutFrom.baseIndex + 1}` : '你上传的视频')
+    : '';
 
   const copyBtn = (tab === 'script' ? scriptHtml : task.sourceText) ? (
     /* 复制当前 tab 上这一份：输入贴回输入框接着用，脚本拿去核对模型侧 */
@@ -205,9 +216,11 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
   ) : null;
 
   /* 生成参数：没值的字段直接不出现，不摆一排「未设置」占地方。
-     平时只把最好认的两项摊在一行上，其余悬停「详细信息」再看，不占版面。 */
+     平时只把最好认的两项摊在一行上，其余悬停「详细信息」再看，不占版面。
+     第三项＝这行值可不可复制：ID 类的值是拿去别处对号的（任务中心搜、跟研发报问题），
+     只让人肉眼抄一遍等于没给。 */
   const params = [
-    ['任务 ID', task.id],
+    ['任务 ID', task.id, 'self'],
     ['工具名称', task.toolName],
     ['视频模型', task.model],
     ['视频时长', task.outDuration],
@@ -280,14 +293,14 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
     } else done();
   }
 
-  // 基准任务 ID：要拿去跟别处对号（任务中心搜、跟研发报问题），能一键复制才算给到了
-  function copyBaseId() {
-    const id = task.fanoutFrom && task.fanoutFrom.taskId;
+  /* 任务 ID 复制：本任务的（详细信息里）和裂变来源的（来路那块）共用一套，
+     回执用 key 区分落在哪个按钮上——两个按钮同时打勾会让人不知道复制的是哪个 */
+  function copyId(key, id) {
     if (!id) return;
     const done = () => {
-      setIdCopied(true);
+      setIdCopied(key);
       clearTimeout(idTimer.current);
-      idTimer.current = setTimeout(() => setIdCopied(false), 1600);
+      idTimer.current = setTimeout(() => setIdCopied(null), 1600);
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(id).then(done).catch(done);
@@ -471,24 +484,26 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
               <>
                 {/* 这批是从别的任务裂变出来的：来路写在最前面，否则「我当初写的」跟成片对不上号。
                     只写「裂变自视频 2」是一句认不出的话——用户手里几十条任务，光凭序号想不起是哪条片。
-                    所以摆基准片的缩略图（点开放大能看），并把基准任务 ID 一并给出（可复制，去任务中心对号）。 */}
+                    所以摆基准片的缩略图（点开放大能看）。
+                    基准也可能是用户自己传的一段视频，那就没有来源任务可指——
+                    这时候「来源任务」整行不出现，摆个空 ID 比不摆更让人犯嘀咕。 */}
                 {task.fanoutFrom && (
                   <div className="vtd-from">
                     {baseVideoUrl ? (
                       <button type="button" className="vtd-from-th" onClick={() => setBaseOpen(true)}
-                        title={`放大查看基准视频 ${task.fanoutFrom.baseIndex + 1}`}>
+                        title={`放大查看${baseLabel}`}>
                         <video src={baseVideoUrl} preload="metadata" muted playsInline
-                          onLoadedData={e => { try { e.currentTarget.currentTime = 0.1 + task.fanoutFrom.baseIndex * 0.6; } catch {} }} />
+                          onLoadedData={e => { try { e.currentTarget.currentTime = 0.1 + (fromTaskId ? task.fanoutFrom.baseIndex * 0.6 : 0); } catch {} }} />
                         <span className="vtd-from-th-play"><Play size={11} /></span>
                       </button>
                     ) : (
-                      // 基准任务不在表里（种子没带上/会话清过）：位子留着但说明白，别摆个黑框让人以为是坏图
-                      <span className="vtd-from-th vtd-from-th--none" title="基准任务不在当前列表中，无法预览">—</span>
+                      // 基准片调不出来（任务不在表里／上传的片子没留下）：位子留着但说明白，别摆个黑框让人以为是坏图
+                      <span className="vtd-from-th vtd-from-th--none" title="基准视频不在当前会话中，无法预览">—</span>
                     )}
                     <div className="vtd-from-main">
                       <div className="vtd-from-line">
                         <GitBranch size={12} strokeWidth={1.8} />
-                        裂变自 <b>视频 {task.fanoutFrom.baseIndex + 1}</b>
+                        裂变自 <b>{baseLabel}</b>
                         <span className="vtd-from-dims">只变 {task.fanoutFrom.dimLabels.join(' / ')}</span>
                         {task.fanoutFrom.steer && <em className="vtd-from-steer">「{task.fanoutFrom.steer}」</em>}
                         {/* 基准是模型看片反解的，不是用户写的——来源不说清楚就成了无主的事实 */}
@@ -498,15 +513,18 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
                           </span>
                         )}
                       </div>
-                      <div className="vtd-from-line vtd-from-line--sub">
-                        <span className="vtd-from-idk">来源任务</span>
-                        <button type="button" className={`vtd-from-id ${idCopied ? 'is-ok' : ''}`}
-                          onClick={copyBaseId} title="复制来源任务 ID">
-                          {task.fanoutFrom.taskId}
-                          {idCopied ? <Check size={11} strokeWidth={2} /> : <Copy size={11} strokeWidth={1.9} />}
-                        </button>
-                        {baseTask && baseTask.name && <span className="vtd-from-name">{baseTask.name}</span>}
-                      </div>
+                      {/* 上传的片子没有来源任务，这一行整行不出现 */}
+                      {fromTaskId && (
+                        <div className="vtd-from-line vtd-from-line--sub">
+                          <span className="vtd-from-idk">来源任务</span>
+                          <button type="button" className={`vtd-from-id ${idCopied === 'base' ? 'is-ok' : ''}`}
+                            onClick={() => copyId('base', fromTaskId)} title="复制来源任务 ID">
+                            {fromTaskId}
+                            {idCopied === 'base' ? <Check size={11} strokeWidth={2} /> : <Copy size={11} strokeWidth={1.9} />}
+                          </button>
+                          {baseTask && baseTask.name && <span className="vtd-from-name">{baseTask.name}</span>}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -558,10 +576,18 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
                 <span className="vtd-meta-more" tabIndex={0}>
                   详细信息 <Info size={13} strokeWidth={1.7} />
                   <span className="vtd-meta-pop" role="tooltip">
-                    {params.map(([label, value]) => (
+                    {params.map(([label, value, copyKey]) => (
                       <span className="vtd-meta-row" key={label}>
                         <span className="vtd-meta-k">{label}</span>
-                        <span className="vtd-meta-v">{value}</span>
+                        {copyKey ? (
+                          <button type="button" className={`vtd-meta-v vtd-copy-id ${idCopied === copyKey ? 'is-ok' : ''}`}
+                            onClick={() => copyId(copyKey, value)} title={`复制${label}`}>
+                            {value}
+                            {idCopied === copyKey ? <Check size={11} strokeWidth={2} /> : <Copy size={11} strokeWidth={1.9} />}
+                          </button>
+                        ) : (
+                          <span className="vtd-meta-v">{value}</span>
+                        )}
                       </span>
                     ))}
                   </span>
@@ -590,17 +616,19 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
             onClick={e => e.stopPropagation()}>
             <div className="vtd-base-head">
               <div>
-                <h3 className="resume-title">裂变基准 · 视频 {task.fanoutFrom.baseIndex + 1}</h3>
+                <h3 className="resume-title">裂变基准 · {baseLabel}</h3>
+                {/* 上传的片子没有来源任务，副标题就只说它是你自己传的 */}
                 <p className="resume-desc">
-                  来源任务 {task.fanoutFrom.taskId}
-                  {baseTask && baseTask.name ? ` · ${baseTask.name}` : ''}
+                  {fromTaskId
+                    ? `来源任务 ${fromTaskId}${baseTask && baseTask.name ? ` · ${baseTask.name}` : ''}`
+                    : '这条基准是你自己上传的视频，不来自任务中心'}
                 </p>
               </div>
               <button className="icon-btn" onClick={() => setBaseOpen(false)} title="关闭"><X size={18} /></button>
             </div>
             <div className="vtd-base-stage">
               <video src={baseVideoUrl} controls autoPlay playsInline
-                aria-label={`基准视频 ${task.fanoutFrom.baseIndex + 1}`} />
+                aria-label={`裂变基准 ${baseLabel}`} />
             </div>
           </div>
         </div>

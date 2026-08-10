@@ -80,9 +80,11 @@ function fillSeedScripts(task, byId = {}, seen = new Set()) {
   const variants = task.variants || [];
   if (!variants.length || variants.some(v => v && v.promptHtml)) return task;
   const from = task.fanoutFrom;
-  if (from && from.taskId && !seen.has(task.id)) {
+  // 上传裂变的种子没有 taskId（基准是用户自己传的片子），照样走裂变这条路补脚本：
+  // 基准任务查不到，baseDims 为空，buildFanoutScripts 按「只有指令没有基准」算，跟真人操作一致
+  if (from && (from.taskId || from.videoUrl) && !seen.has(task.id)) {
     // 基准任务也是种子，脚本没补上就读不出它的 dims；成环时(seen)退回普通批次
-    const baseSeed = byId[from.taskId];
+    const baseSeed = from.taskId ? byId[from.taskId] : null;
     const base = baseSeed ? fillSeedScripts(baseSeed, byId, new Set([...seen, task.id])) : null;
     const baseIndex = from.baseIndex || 0;
     const varyKeys = from.varyKeys || [];
@@ -100,7 +102,9 @@ function fillSeedScripts(task, byId = {}, seen = new Set()) {
       ...task,
       // 详情页要的是标签不是 key：宿主那侧只声明变哪几维，标签在这边的 FANOUT_DIMS 里
       fanoutFrom: {
-        taskId: from.taskId,
+        taskId: from.taskId || null,
+        // 基准是用户自己传的片子时没有来源任务，片子本身在这上面（详情要拿它做缩略图）
+        videoUrl: from.videoUrl || null,
         baseIndex,
         steer: from.steer || '',
         dimLabels: varyKeys.map(k => (FANOUT_DIMS.find(d => d.key === k) || {}).label).filter(Boolean),
@@ -252,7 +256,10 @@ export default function EmbedApp() {
       name: `视频生成 · 裂变 ${count} 条`,
       region: task.region, toolName: task.toolName,
       // 新任务详情里的来路：没有这个，「你的输入」跟成片就对不上号了。
-      // readBase 记下基准是反解来的——它不是用户写的，来源得说清楚
+      // readBase 记下基准是反解来的——它不是用户写的，来源得说清楚。
+      // 这条路径的基准必是某条任务的变体，所以带 taskId；
+      // 将来若开「传一段自己的片子直接裂变」的入口，改带 {videoUrl}（没有来源任务可指），
+      // 详情页对两种形状都认（fromTaskId 有无决定「来源任务」那行出不出）
       fanoutFrom: { taskId: task.id, baseIndex, steer, dimLabels, readBase: !!readBase },
     });
   };
