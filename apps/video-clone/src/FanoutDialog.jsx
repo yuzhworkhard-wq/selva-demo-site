@@ -57,18 +57,23 @@ function FanoutPresetControl({ value, onChange }) {
             <span>{active.label}</span><ChevronDown size={12} />
           </button>
           {open && (
-            <div className="fo-preset-menu" role="menu">
-              {PRESET_LEVELS.map(level => (
-                <button key={level.value} type="button" role="menuitemradio"
-                  aria-checked={value === level.value}
-                  className={`fo-preset-option ${value === level.value ? 'active' : ''}`}
-                  onClick={() => { onChange(level.value); setOpen(false); }}>
-                  <span className="fo-preset-option-copy">
-                    <b>{level.label}</b><small>{level.description}</small>
-                  </span>
-                  {value === level.value && <Check size={14} />}
-                </button>
-              ))}
+            <div className="fo-preset-menu mp-panel" role="menu">
+              <div className="mp-vers">
+                <div className="mp-verlist on">
+                  {PRESET_LEVELS.map(level => (
+                    <button key={level.value} type="button" role="menuitemradio"
+                      aria-checked={value === level.value}
+                      className={`mp-ver ${value === level.value ? 'sel' : ''}`}
+                      onClick={() => { onChange(level.value); setOpen(false); }}>
+                      <span className="mp-ver-top">
+                        <b className="mp-ver-name">{level.label}</b>
+                        {value === level.value && <Check size={14} className="mp-ver-check" />}
+                      </span>
+                      <span className="mp-ver-desc">{level.description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </>
