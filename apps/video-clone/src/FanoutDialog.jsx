@@ -46,9 +46,9 @@ function FanoutPresetControl({ value, onChange }) {
   return (
     <div className={`fo-preset-control ${value ? 'is-on' : ''}`} ref={ref}>
       <button type="button" className="fo-preset-toggle" onClick={toggle}
-        role="switch" aria-checked={!!value} title={value ? '关闭档位，改用自定义指令' : '开启裂变档位'}>
+        role="switch" aria-checked={!!value} title={value ? '关闭自动，改用自定义指令' : '开启自动裂变'}>
         <span className="fo-preset-switch" aria-hidden="true"><i /></span>
-        <span>档位</span>
+        <span>自动</span>
       </button>
       {value && (
         <>
@@ -59,7 +59,7 @@ function FanoutPresetControl({ value, onChange }) {
           </button>
           {open && (
             <div className="fo-preset-menu" role="menu">
-              <div className="fo-preset-menu-title">裂变档位</div>
+              <div className="fo-preset-menu-title">自动裂变</div>
               {PRESET_LEVELS.map(level => (
                 <button key={level.value} type="button" role="menuitemradio"
                   aria-checked={value === level.value}
@@ -116,8 +116,7 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
      让他先确认「你是说人物设定吗」是把系统的活推给用户干。 */
   const [model, setModel] = useState(task.model || 'Seedance 2.0');
   const [count, setCount] = useState(4);
-  /* 裂变档位：用户懒得输入修改内容时，可直接选择档位一键裂变。
-     档位决定裂变幅度——初级只换人物/场景，中级加上故事大纲/关键话术，高级则抽象创作思路 */
+  /* 自动裂变：用户不写自定义指令时，可按三个层级自动生成变化。 */
   const [preset, setPreset] = useState('basic'); // null | 'basic' | 'medium' | 'advanced'
   const [sending, setSending] = useState(false);
   /* 参考素材：跟第一步那张输入卡同一套入口（本地上传 / 资源库），同一套模型配额。
@@ -176,7 +175,7 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
   function cfgLimit(kind) { return modelCfg(model).limits[kind] || 0; }
   const refCount = refImages.length + refVideos.length + refAudios.length;
 
-  // 说了要变什么才发得出去（写一句话，或挂一张图指着说，或选了档位）
+  // 说了要变什么才发得出去（写一句话，或挂一张图指着说，或开启自动）
   const blocked = (!steer.trim() && refCount === 0 && !preset) || sending || reading;
   const submit = () => {
     if (blocked) return;
@@ -231,7 +230,7 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
           </div>
         )}
 
-        <div className="composer composer--fanout">
+        <div className={`composer composer--fanout ${preset ? 'composer--fanout-auto' : ''}`}>
           {/* 挂上来的参考素材：跟第一步那张输入卡同一种 chip */}
           {refCount > 0 && (
             <div className="idea-dock">
@@ -258,13 +257,15 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
             </div>
           )}
 
-          <AutoTextarea
-            value={steer} onFocus={clearPresetForInput}
-            onChange={value => { clearPresetForInput(); setSteer(value); }} onSubmit={submit}
-            readOnly={!!preset}
-            minRows={2} maxHeight={140} maxLength={200}
-            placeholder={reading ? '正在分析画面…' : '想怎么变？比如：换成这张脸、场景挪到户外'}
-          />
+          <div className={`fo-steer-collapse ${preset ? 'is-collapsed' : ''}`} aria-hidden={!!preset}>
+            <AutoTextarea
+              value={steer} onFocus={clearPresetForInput}
+              onChange={value => { clearPresetForInput(); setSteer(value); }} onSubmit={submit}
+              readOnly={!!preset} tabIndex={preset ? -1 : 0}
+              minRows={2} maxHeight={140} maxLength={200}
+              placeholder={reading ? '正在分析画面…' : '想怎么变？比如：换成这张脸、场景挪到户外'}
+            />
+          </div>
 
           {!durationKept && (
             <div className="composer-warn">

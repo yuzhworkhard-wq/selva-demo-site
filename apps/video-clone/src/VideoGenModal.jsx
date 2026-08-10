@@ -245,7 +245,7 @@ function Picker({ icon: Icon, value, options, onChange, align = 'left', title, u
 }
 
 /* ── 自增高文本域：和大模型对话框一样，输入多少长多少，到上限内部滚动 ── */
-export function AutoTextarea({ value, onChange, onSubmit, placeholder, minRows = 1, maxHeight = 200, className = '', maxLength, readOnly = false, onFocus }) {
+export function AutoTextarea({ value, onChange, onSubmit, placeholder, minRows = 1, maxHeight = 200, className = '', maxLength, readOnly = false, onFocus, tabIndex }) {
   const ref = useRef(null);
   const resize = () => {
     const el = ref.current;
@@ -263,6 +263,7 @@ export function AutoTextarea({ value, onChange, onSubmit, placeholder, minRows =
       value={value}
       maxLength={maxLength}
       readOnly={readOnly}
+      tabIndex={tabIndex}
       placeholder={placeholder}
       onFocus={onFocus}
       onChange={e => onChange(e.target.value)}

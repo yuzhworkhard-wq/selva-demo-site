@@ -4655,6 +4655,7 @@ body {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   margin-top: 22px; padding-top: 18px;
   border-top: 1px solid var(--border);
+  transition: margin-top 220ms ease, padding-top 220ms ease, border-color 220ms ease;
 }
 .composer-bar-left { display: flex; align-items: center; gap: 2px; }
 .composer-bar-right { display: flex; align-items: center; gap: 2px; }
@@ -5580,36 +5581,36 @@ body {
 }
 .fo-base-tail { margin-left: auto; flex-shrink: 0; font-size: 12px; color: var(--text-muted); }
 
-/* 裂变档位：收进输入卡底栏，与上传入口并列 */
+/* 自动裂变：收进输入卡底栏，与上传入口并列；尺寸沿用底栏 picker */
 .fo-preset-control {
-  position: relative; display: inline-flex; align-items: center; height: 30px;
-  margin-left: 6px; padding: 0 4px 0 8px; border: 1px solid var(--border-light);
-  border-radius: var(--radius-sm); background: var(--bg-card); color: var(--text-muted);
+  position: relative; display: inline-flex; align-items: center;
+  margin-left: 2px; color: var(--text-secondary);
 }
-.fo-preset-control.is-on { border-color: rgba(97, 97, 255, .55); color: var(--text-secondary); }
+.fo-preset-control.is-on { color: var(--text-primary); }
 .fo-preset-toggle, .fo-preset-value {
-  display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0;
-  border: 0; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px; height: 29px; padding: 6px 9px;
+  border: none; border-radius: 8px; background: transparent; color: inherit;
+  font: inherit; font-size: 13px; cursor: pointer; transition: var(--transition);
 }
-.fo-preset-toggle:hover, .fo-preset-value:hover { color: var(--text-primary); }
+.fo-preset-toggle:hover, .fo-preset-value:hover, .fo-preset-control.is-on .fo-preset-toggle { background: var(--bg-elevated); color: var(--text-primary); }
 .fo-preset-switch {
-  position: relative; width: 25px; height: 15px; border-radius: 999px;
+  position: relative; width: 24px; height: 14px; border-radius: 999px;
   background: var(--border-light); transition: background 160ms ease;
 }
 .fo-preset-switch i {
-  position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%;
+  position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%;
   background: var(--text-muted); transition: left 160ms ease, background 160ms ease;
 }
 .fo-preset-control.is-on .fo-preset-switch { background: var(--accent); }
 .fo-preset-control.is-on .fo-preset-switch i { left: 12px; background: #fff; }
-.fo-preset-divider { width: 1px; height: 15px; margin: 0 7px; background: var(--border-light); }
-.fo-preset-value { min-width: 48px; justify-content: center; color: var(--text-primary); }
+.fo-preset-divider { width: 1px; height: 16px; margin: 0 1px; background: var(--border-light); }
+.fo-preset-value { min-width: 48px; justify-content: center; }
 .fo-preset-menu {
-  position: absolute; left: 0; bottom: calc(100% + 9px); width: 258px; padding: 7px;
+  position: absolute; left: 0; bottom: calc(100% + 6px); width: 258px; padding: 5px;
   background: var(--bg-elevated); border: 1px solid var(--border-light); border-radius: 8px;
   box-shadow: 0 12px 28px rgba(0,0,0,.45); z-index: 120;
 }
-.fo-preset-menu-title { padding: 5px 8px 7px; color: var(--text-muted); font-size: 11px; }
+.fo-preset-menu-title { padding: 5px 8px 6px; color: var(--text-muted); font-size: 11px; }
 .fo-preset-option {
   display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;
   padding: 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary);
@@ -5621,6 +5622,20 @@ body {
 .fo-preset-option-copy small { font-size: 11px; line-height: 1.4; color: var(--text-muted); }
 .fo-preset-option:hover small, .fo-preset-option.active small { color: var(--text-secondary); }
 .composer-input:read-only { cursor: text; opacity: .58; }
+
+/* 自动模式不需要输入指令：输入区域向下淡出并折叠，底栏同步上移。 */
+.fo-steer-collapse {
+  max-height: 160px; opacity: 1; overflow: hidden; transform: translateY(0);
+  transition: max-height 220ms ease, opacity 160ms ease, transform 220ms ease;
+}
+.fo-steer-collapse.is-collapsed {
+  max-height: 0; opacity: 0; transform: translateY(10px); pointer-events: none;
+}
+.composer--fanout-auto .composer-bar { margin-top: 8px; padding-top: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fo-steer-collapse, .composer-bar, .fo-preset-switch, .fo-preset-switch i { transition: none; }
+}
 
 /* 弹窗里的输入卡不受首页那套居中/限宽约束，撑满面板 */
 .composer--fanout { max-width: none; margin: 0; }
