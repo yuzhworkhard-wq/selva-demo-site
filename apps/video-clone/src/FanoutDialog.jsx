@@ -58,7 +58,6 @@ function FanoutPresetControl({ value, onChange }) {
           </button>
           {open && (
             <div className="fo-preset-menu" role="menu">
-              <div className="fo-preset-menu-title">自动裂变</div>
               {PRESET_LEVELS.map(level => (
                 <button key={level.value} type="button" role="menuitemradio"
                   aria-checked={value === level.value}
