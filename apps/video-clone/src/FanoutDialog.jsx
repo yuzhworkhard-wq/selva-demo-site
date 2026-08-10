@@ -1,11 +1,83 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { X, ArrowUp, Lock, AlertCircle, Loader2, Eye, Film, Music } from 'lucide-react';
+import { X, ArrowUp, Lock, AlertCircle, Loader2, Eye, Film, Music, ChevronDown, Check } from 'lucide-react';
 import { notifyHostModal } from './hostModal';
 import { steerToDims, readVideoDims } from './briefParser';
 import {
   ModelPicker, Stepper, AutoTextarea, modelCfg,
   AddRefButton, LibraryPickDialog, REF_KINDS, kindLabel,
 } from './VideoGenModal';
+
+const PRESET_LEVELS = [
+  { value: 'basic', label: '初级', description: '保持主题，仅调整人物、场景或视觉呈现。' },
+  { value: 'medium', label: '中级', description: '保留核心信息，重组叙事结构与关键表达。' },
+  { value: 'advanced', label: '高级', description: '保留创作目标，重新构建内容策略与表达方式。' },
+];
+
+function FanoutPresetControl({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const lastValue = useRef(value || 'basic');
+  const ref = useRef(null);
+  const active = PRESET_LEVELS.find(level => level.value === value) || PRESET_LEVELS[0];
+
+  useEffect(() => {
+    if (value) lastValue.current = value;
+  }, [value]);
+  useEffect(() => {
+    if (!open) return;
+    const away = e => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const escape = e => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (value) {
+      setOpen(false);
+      onChange(null);
+    } else {
+      onChange(lastValue.current);
+    }
+  };
+
+  return (
+    <div className={`fo-preset-control ${value ? 'is-on' : ''}`} ref={ref}>
+      <button type="button" className="fo-preset-toggle" onClick={toggle}
+        role="switch" aria-checked={!!value} title={value ? '关闭档位，改用自定义指令' : '开启裂变档位'}>
+        <span className="fo-preset-switch" aria-hidden="true"><i /></span>
+        <span>档位</span>
+      </button>
+      {value && (
+        <>
+          <span className="fo-preset-divider" />
+          <button type="button" className="fo-preset-value" onClick={() => setOpen(v => !v)}
+            aria-expanded={open} aria-haspopup="menu" title={active.description}>
+            <span>{active.label}</span><ChevronDown size={12} />
+          </button>
+          {open && (
+            <div className="fo-preset-menu" role="menu">
+              <div className="fo-preset-menu-title">裂变档位</div>
+              {PRESET_LEVELS.map(level => (
+                <button key={level.value} type="button" role="menuitemradio"
+                  aria-checked={value === level.value}
+                  className={`fo-preset-option ${value === level.value ? 'active' : ''}`}
+                  onClick={() => { onChange(level.value); setOpen(false); }}>
+                  <span className="fo-preset-option-copy">
+                    <b>{level.label}</b><small>{level.description}</small>
+                  </span>
+                  {value === level.value && <Check size={14} />}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 /* ══ 定向裂变面板 ══
    任务详情里点「裂变」弹出。语义是**控制变量**：以某一条已出片的变体为基准，
@@ -61,13 +133,11 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
 
   const varyKeys = useMemo(() => steerToDims(steer).map(d => d.key), [steer]);
 
-  const PRESET_LEVELS = [
-    { value: 'basic', label: '初级', description: '保持主题，仅调整人物、场景或视觉呈现。' },
-    { value: 'medium', label: '中级', description: '保留核心信息，重组叙事结构与关键表达。' },
-    { value: 'advanced', label: '高级', description: '保留创作目标，重新构建内容策略与表达方式。' },
-  ];
-  const presetIndex = Math.max(0, PRESET_LEVELS.findIndex(level => level.value === preset));
   const clearPresetForInput = () => { if (preset) setPreset(null); };
+  const setPresetMode = value => {
+    setPreset(value);
+    if (value) setSteer('');
+  };
 
   // 弹窗开着时同步宿主遮罩，嵌入态下才有「全视口居中」的观感
   useEffect(() => {
@@ -147,43 +217,6 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
           {!reading && <span className="fo-base-tail">没说到的部分逐字沿用</span>}
         </div>
 
-        {/* 裂变档位与自定义指令互斥：选择档位时不需要额外描述 */}
-        <div className="fo-presets">
-          <span className="fo-presets-label">裂变档位</span>
-          <div className="fo-preset-slider-wrap">
-            <div className={`fo-preset-slider ${!preset ? 'is-custom' : ''}`} style={{ '--fo-preset-position': `${presetIndex * 50}%` }}>
-              <input
-                type="range" min="0" max="2" step="1" value={presetIndex}
-                aria-label="裂变档位"
-                onChange={e => setPreset(PRESET_LEVELS[Number(e.target.value)].value)}
-              />
-              <div className="fo-preset-track" aria-hidden="true">
-                <span className="fo-preset-track-fill" />
-                {PRESET_LEVELS.map((level, index) => (
-                  <button
-                    key={level.value}
-                    type="button"
-                    className={`fo-preset-stop ${preset === level.value ? 'active' : ''}`}
-                    style={{ left: `${index * 50}%` }}
-                    onClick={() => setPreset(level.value)}
-                    title={level.description}
-                    aria-label={`${level.label}：${level.description}`}
-                  >
-                    <span className="fo-preset-dot" />
-                    <span className="fo-preset-stop-label">{level.label}</span>
-                    <span className="fo-preset-tip">{level.description}</span>
-                  </button>
-                ))}
-                <span className="fo-preset-thumb" />
-              </div>
-            </div>
-            <div className="fo-preset-current">
-              {!preset && <b>自定义指令</b>}
-              <span>{preset ? PRESET_LEVELS[presetIndex].description : '输入文字描述本次裂变方向。'}</span>
-            </div>
-          </div>
-        </div>
-
         {/* 为什么要等这一下：这批没开 Magic Prompt（或是历史任务），N 条提示词一模一样，
             文字里读不出这一条长什么样，只能先看片。说清楚了用户才不觉得是卡住了。 */}
         {needsRead && (
@@ -246,6 +279,7 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
                 model={model} refs={refs}
                 onAddFiles={addLocalFiles} onOpenLibrary={() => setLibOpen(true)}
               />
+              <FanoutPresetControl value={preset} onChange={setPresetMode} />
             </div>
             <div className="composer-bar-right">
               <ModelPicker value={model} onChange={setModel} />
