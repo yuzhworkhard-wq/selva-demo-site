@@ -103,6 +103,7 @@ function getWorkflowTemplateEdges(wt) {
 const TOOLBOX_TOOLS = [
   { id: 'tool-script', name: '脚本生成', en: 'Script Generation', icon: '📝', category: 'content', desc: '支持基于创意描述、分析报告或参考脚本批量生成广告脚本' },
   { id: 'tool-video', name: '视频生成', en: 'Video Generation', icon: '🎥', category: 'video', desc: '一句话裂变多条广告视频，Seedance 2.0 三档 / Minimax H3 / Google omni 任选' },
+  { id: 'tool-video-fanout', name: '视频裂变', en: 'Video Fanout', icon: '🔀', category: 'video', desc: '上传一条基准视频，沿用任务详情裂变效果生成多条视频变体' },
   { id: 'tool-understand', name: '视频理解', en: 'Video Understanding', icon: '🔍', category: 'content', desc: 'AI 深度分析视频内容，输出风格解析和提示词' },
   { id: 'tool-translate', name: '文本翻译', en: 'Text Translation', icon: '🌐', category: 'content', desc: 'AI 多语言广告文案翻译，支持按目标语言配置市场语料与术语表' },
   { id: 'tool-extract', name: '文案提取', en: 'Script Extraction', icon: '✂️', category: 'content', desc: '从视频或图片中智能提取台词、字幕等文案' },

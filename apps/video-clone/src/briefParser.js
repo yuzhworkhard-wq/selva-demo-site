@@ -712,6 +712,16 @@ export const FANOUT_DIMS = DIMENSIONS
   .sort((a, b) => (b.weight || 0) - (a.weight || 0))
   .map(d => ({ key: d.key, label: d.label, weight: d.weight || 0 }));
 
+const FANOUT_PRESET_KEYS = {
+  basic: ['character', 'setting', 'lighting'],
+  medium: ['format', 'hook', 'firstLine', 'script', 'pace', 'emotion'],
+  advanced: ['character', 'setting', 'format', 'camera', 'hook', 'firstLine', 'script', 'pace', 'emotion', 'cta', 'transition'],
+};
+
+export function fanoutPresetKeys(level) {
+  return FANOUT_PRESET_KEYS[level] || [];
+}
+
 /* 「只换个男女角色长相」→ character。关键词表，先到先得，所以细粒度的排在前面：
    「开场首句」必须先于「开场」命中 firstLine，否则全被 hook 吃掉。 */
 const STEER_HINTS = [
@@ -969,10 +979,10 @@ export function buildScript(parsed, dims, index, steer = '', images = [], total 
    但任务详情要展示「这条视频当初是按什么提示词跑的」，历史任务也得按同一套规则补出来——
    两处各写一遍迟早分叉，所以收在这里当唯一出处。
 
-   Magic Prompt 决定这 N 条的 prompt 有多不一样：
+   Magic Prompt 决定这 N 条的 prompt 如何处理：
      on   每条在「你没写死的维度」上各取一组值 → N 条各不相同
-     off  N 条共用同一组值 → 只剩模型自身的随机
-     auto 你留白多就变（等同 on），已经写得很细就别乱动（等同 off）
+     off  原文直接提交，维度为空，N 条共用用户输入 → 只剩模型自身的随机
+     auto 你留白多就变，已经写得很细就共用一份系统补全脚本
    无论哪一档，parsed.locked 里的东西逐字不动。
 
    auto 的判据用「锁死项条数」而不是 open.length：后者恒等于 23 个可裂变维度里没被认出来的
@@ -980,8 +990,16 @@ export function buildScript(parsed, dims, index, steer = '', images = [], total 
 const DETAILED_LOCK_COUNT = 6;
 export function buildVariantScripts(sourceText, imageUrls = [], magic = 'auto', count = 1) {
   const parsed = parseBrief(sourceText || '');
+  const total = Math.max(1, count);
+  if (magic === 'off') {
+    const promptHtml = sourceText ? `<p>${esc(sourceText)}</p>` : '';
+    return Array.from({ length: total }, () => ({
+      promptHtml,
+      dims: [],
+    }));
+  }
   const vary = magic === 'on' || (magic === 'auto' && parsed.locked.length < DETAILED_LOCK_COUNT);
-  return Array.from({ length: Math.max(1, count) }, (_, i) => {
+  return Array.from({ length: total }, (_, i) => {
     // 不变的时候连序号也固定，N 条逐字相同＝真正的「共用同一份提示词」；
     // total 传 1 会让脚本里那个小标题从「本条差异 · 变体 #N」换成「自动补全 · 你未指定的部分」
     const k = vary ? i : 0;

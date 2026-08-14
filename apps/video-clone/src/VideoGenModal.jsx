@@ -7,49 +7,16 @@ import {
 } from 'lucide-react';
 import { notifyHostModal } from './hostModal';
 import { buildVariantScripts } from './briefParser';
+import {
+  VIDEO_MODEL_CONFIG, MODEL_FAMILIES, DEFAULT_MODEL, modelCfg, modelLabel, familyOf,
+  REF_KINDS, kindLabel, kindOfFile,
+} from './videoModelConfig.mjs';
 
 /* ── 输入卡控件选项（视频生成语义，全部真下拉）── */
-/* 各模型的能力不一样：时长档位、提示词字数、能挂几个参考素材都由模型定死。
-   durations 只有一档 = 该模型时长固定，UI 出锁定态不给选；
-   limits 里为 0 = 该模型不吃这类素材，入口直接置灰；
-   maxChars = 提示词上限，换模型后原文超了不替用户删，锁住生成按钮说清楚要删几个。
-   规则写在这一处，底栏的可点性、生成按钮的可用性全部从这里推出来。 */
-const VIDEO_MODEL_CONFIG = {
-  'Seedance 2.0':      { durations: ['15s'],       maxChars: 5000, limits: { image: 4, video: 3, audio: 1 }, credits: 3, tagline: '旗舰画质，动作与镜头最稳' },
-  'Seedance 2.0 Fast': { durations: ['15s'],       maxChars: 5000, limits: { image: 4, video: 3, audio: 1 }, credits: 2, tagline: '同等参考素材能力，出片更快、画质略让一档' },
-  'Seedance 2.0 Mini': { durations: ['15s'],       maxChars: 5000, limits: { image: 4, video: 3, audio: 1 }, credits: 1, tagline: '最省额度，适合大批量试错' },
-  'Minimax H3':        { durations: ['15s', '10s'], maxChars: 2000, limits: { image: 5, video: 0, audio: 1 }, credits: 1, tagline: '参考图最多（5 张），可挂参考音频对齐语速' },
-  'Google omni':       { durations: ['10s'],       maxChars: 2000, limits: { image: 4, video: 1, audio: 0 }, credits: 1, tagline: '固定 10s，可挂 1 条参考视频定风格' },
-};
-/* 同一个模型出了好几个版本（画质/速度/价格三挡），选择器按「模型族 → 具体版本」两栏走：
-   左边选族，右边才是真正会被提交的版本名。单版本的族右边就只有一行。 */
-const MODEL_FAMILIES = [
-  { name: 'Seedance',    desc: '字节 · 参考素材最全',   versions: ['Seedance 2.0', 'Seedance 2.0 Fast', 'Seedance 2.0 Mini'] },
-  { name: 'Minimax H3',  desc: 'MiniMax · 时长可选',    versions: ['Minimax H3'] },
-  { name: 'Google omni', desc: 'Google · 可挂参考视频', versions: ['Google omni'] },
-];
-export const DEFAULT_MODEL = 'Seedance 2.0';   // 默认给限制最松的一档，进来就能直接写直接发
-export const modelCfg = (m) => VIDEO_MODEL_CONFIG[m] || VIDEO_MODEL_CONFIG[DEFAULT_MODEL];
-const familyOf = (m) => MODEL_FAMILIES.find(f => f.versions.includes(m)) || MODEL_FAMILIES[0];
-export const REF_KINDS = [
-  { key: 'image', label: '参考图', accept: 'image/*' },
-  { key: 'video', label: '参考视频', accept: 'video/*' },
-  { key: 'audio', label: '参考音频', accept: 'audio/*' },
-];
 const ASPECTS = ['9:16', '1:1', '16:9'];
 const COUNT_MAX = 8;
 
 const toRefItems = (list) => (list || []).map(x => (typeof x === 'string' ? { url: x, name: '' } : x));
-// 有的模型收的图不是「参考」是视频第一帧（配置里给 imageLabel），叫法得跟着模型走
-export const kindLabel = (model, key) => ((key === 'image' && modelCfg(model).imageLabel) || REF_KINDS.find(k => k.key === key).label);
-// 文件类型 → 素材类别：本地上传合成一个入口后，用户不再自己报"这是参考图还是参考视频"
-export const kindOfFile = (file) => {
-  const t = file.type || '';
-  if (t.startsWith('image/')) return 'image';
-  if (t.startsWith('video/')) return 'video';
-  if (t.startsWith('audio/')) return 'audio';
-  return null;
-};
 // 选择器里那排能力标签：时长 + 各类素材上限 + 提示词字数，一行看完这一档能干什么
 function modelChips(model) {
   const cfg = modelCfg(model);
@@ -110,20 +77,21 @@ const LIB_TABS = [
    同时把第一条摆到底栏上方——错在哪、要删几个，说清楚了才算拦得住。 */
 function genIssues(model, refs, promptText = '') {
   const cfg = modelCfg(model);
+  const displayModel = modelLabel(model);
   const issues = [];
-  if (cfg.imageRequired && refs.image.length === 0) issues.push(`${model} 必须上传 1 张首帧图才能生成`);
+  if (cfg.imageRequired && refs.image.length === 0) issues.push(`${displayModel} 必须上传 1 张首帧图才能生成`);
   REF_KINDS.forEach(({ key }) => {
     const max = cfg.limits[key];
     const over = refs[key].length - max;
     if (over <= 0) return;
     const label = kindLabel(model, key);
     issues.push(max === 0
-      ? `${model} 不支持${label}，请移除已添加的 ${refs[key].length} 个`
-      : `${model} 最多 ${max} 个${label}，请移除 ${over} 个`);
+      ? `${displayModel} 不支持${label}，请移除已添加的 ${refs[key].length} 个`
+      : `${displayModel} 最多 ${max} 个${label}，请移除 ${over} 个`);
   });
-  // 字数上限各模型不同（Seedance 5000 / 其余 2000）：从长的那档换到短的，已写的字不替用户砍
+  // 字数上限由配置驱动：从长的那档换到短的，已写的字不替用户砍
   const overChars = promptText.length - cfg.maxChars;
-  if (overChars > 0) issues.push(`${model} 提示词最多 ${cfg.maxChars} 字，请删掉 ${overChars} 字`);
+  if (overChars > 0) issues.push(`${displayModel} 提示词最多 ${cfg.maxChars} 字，请删掉 ${overChars} 字`);
   return issues;
 }
 
@@ -883,6 +851,7 @@ export function Stepper({ value, onChange, min = 1, max = COUNT_MAX, title }) {
    模型的配额约束不变，摆在菜单底部一行看完，满了的入口直接灰掉。 ── */
 export function AddRefButton({ model, refs, onAddFiles, onOpenLibrary, disabled = false }) {
   const cfg = modelCfg(model);
+  const displayModel = modelLabel(model);
   const kinds = REF_KINDS.filter(k => cfg.limits[k.key] > 0);
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -913,7 +882,7 @@ export function AddRefButton({ model, refs, onAddFiles, onOpenLibrary, disabled 
       <button
         type="button" className="composer-icon-btn" disabled={disabled || allFull} aria-expanded={open}
         onClick={() => setOpen(o => !o)}
-        title={disabled ? '自动模式下不支持添加参考素材' : allFull ? `${model} 的参考素材已达上限` : '添加参考素材'}
+        title={disabled ? '自动模式下不支持添加参考素材' : allFull ? `${displayModel} 的参考素材已达上限` : '添加参考素材'}
       >
         <Plus size={18} />
       </button>
@@ -1045,13 +1014,13 @@ export function LibraryPickDialog({ model, refs, onConfirm, onClose }) {
 }
 
 /* ── 视频模型选择器：左边模型族、右边该族的具体版本 + 能力标签。
-   Seedance 一个族下面挂 2.0 / 2.0 Fast / 2.0 Mini 三档，能力相同只差速度与额度；
-   单版本的族右边就一行，交互一致不另开一套。 ── */
+   每个模型族的版本数量由共享配置决定，单版本的族右边就一行。 ── */
 const MP_PANEL_W = 560;   // = .mp-panel 宽度，翻转判定要用，改样式记得同步
 export function ModelPicker({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const [famName, setFamName] = useState(() => familyOf(value).name);
   const [flip, setFlip] = useState(false);   // 右边放不下就翻回左展开（嵌入模式内容区窄 240px）
+  const [mobileBottom, setMobileBottom] = useState(null);
   const ref = useRef(null);
   const btnRef = useRef(null);
 
@@ -1059,7 +1028,11 @@ export function ModelPicker({ value, onChange }) {
     if (!open) return;
     setFamName(familyOf(value).name);   // 每次开都从当前选中的那一族落脚
     const box = btnRef.current?.getBoundingClientRect();
-    if (box) setFlip(box.left + MP_PANEL_W + 16 > window.innerWidth);
+    if (box) {
+      const narrow = window.innerWidth < MP_PANEL_W + 24;
+      setFlip(!narrow && box.left + MP_PANEL_W + 16 > window.innerWidth);
+      setMobileBottom(narrow ? window.innerHeight - box.top + 8 : null);
+    }
     const away = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
     const esc = (e) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', away);
@@ -1072,11 +1045,15 @@ export function ModelPicker({ value, onChange }) {
   return (
     <div className={`idea-pick mp ${open ? 'open' : ''}`} ref={ref}>
       <button ref={btnRef} type="button" className="idea-pick-btn" onClick={() => setOpen(o => !o)} aria-expanded={open} title="视频模型">
-        <span className="idea-pick-val">{value}</span>
+        <span className="idea-pick-val">{modelLabel(value)}</span>
         <ChevronDown size={13} className="idea-pick-chev" />
       </button>
       {open && (
-        <div className={`mp-panel ${flip ? 'mp-panel--flip' : ''}`} role="dialog" aria-label="视频模型">
+        <div
+          className={`mp-panel mp-panel--model ${flip ? 'mp-panel--flip' : ''}`}
+          role="dialog" aria-label="视频模型"
+          style={mobileBottom === null ? undefined : { '--mp-mobile-bottom': `${mobileBottom}px` }}
+        >
           <div className="mp-fams" role="listbox">
             {MODEL_FAMILIES.map(f => (
               <button
@@ -1107,7 +1084,7 @@ export function ModelPicker({ value, onChange }) {
                       onClick={() => { onChange(v); setOpen(false); }}
                     >
                       <span className="mp-ver-top">
-                        <b className="mp-ver-name">{v}</b>
+                        <b className="mp-ver-name">{modelLabel(v)}</b>
                         <span className="mp-ver-credit">{c.credits} 额度/条</span>
                         {v === value && <Check size={14} className="mp-ver-check" />}
                       </span>
@@ -1143,6 +1120,7 @@ function Step1InputIdea({
   const CHAR_MAX = cfg.maxChars;
   const chars = promptText.length;
   const overChars = chars > CHAR_MAX;
+  const displayModel = modelLabel(videoModel);
   const [assetLibOpen, setAssetLibOpen] = useState(false);
 
   return (
@@ -1160,7 +1138,7 @@ function Step1InputIdea({
               {REF_KINDS.map(({ key }) => refs[key].map((item, idx) => {
                 const over = idx >= cfg.limits[key];
                 const lbl = kindLabel(videoModel, key);
-                const tip = over ? `超出 ${videoModel} 的${lbl}上限，请删除` : (item.name || lbl);
+                const tip = over ? `超出 ${displayModel} 的${lbl}上限，请删除` : (item.name || lbl);
                 if (key === 'image') return (
                   <div key={`${key}-${idx}`} className={`idea-img-chip ${over ? 'over' : ''}`} title={tip}>
                     <img src={item.url} alt="" className="idea-chip-thumb" />
@@ -1178,7 +1156,7 @@ function Step1InputIdea({
             </div>
             {/* 图怎么用由模型定，不劳用户选：这一档的图就是视频第一帧，说明一下即可 */}
             {refs.image.length > 0 && cfg.imageRequired && (
-              <span className="idea-dock-tag" title={`${videoModel} 的图就是视频第一帧`}>首帧图</span>
+              <span className="idea-dock-tag" title={`${displayModel} 的图就是视频第一帧`}>首帧图</span>
             )}
           </div>
         )}
@@ -1224,7 +1202,7 @@ function Step1InputIdea({
             {cfg.durations.length > 1
               ? <Picker value={duration} options={cfg.durations} onChange={setDuration} align="right" up title="时长" />
               : (
-                <span className="idea-pick idea-pick--locked" title={`${videoModel} 时长固定 ${cfg.durations[0]}，不可调整`}>
+                <span className="idea-pick idea-pick--locked" title={`${displayModel} 时长固定 ${cfg.durations[0]}，不可调整`}>
                   <span className="idea-pick-btn">
                     <span className="idea-pick-val">{cfg.durations[0]}</span>
                     <Lock size={11} className="idea-pick-chev" />

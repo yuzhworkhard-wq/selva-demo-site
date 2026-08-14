@@ -2,6 +2,7 @@ import React from 'react';
 import {
   FileText, Video, Globe, Mic, AlertTriangle,
   Clapperboard, Copy,
+  GitBranch,
 } from 'lucide-react';
 
 const tools = [
@@ -14,7 +15,7 @@ const tools = [
   { icon: Clapperboard, label: '视频生成', category: 'video' },
 ];
 
-export function ToolboxPage({ onStartClone, onStartVideoGen }) {
+export function ToolboxPage({ onStartClone, onStartVideoGen, onStartVideoFanout }) {
   return (
     <div className="toolbox-page">
       <div className="toolbox-header">
@@ -46,6 +47,11 @@ export function ToolboxPage({ onStartClone, onStartVideoGen }) {
               <Clapperboard size={20} strokeWidth={1.5} />
               <span>视频生成</span>
               <span className="tool-badge">v2</span>
+            </button>
+            <button className="tool-card tool-card--primary" onClick={onStartVideoFanout}>
+              <GitBranch size={20} strokeWidth={1.5} />
+              <span>视频裂变</span>
+              <span className="tool-badge">New</span>
             </button>
           </div>
         </section>

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { notifyHostModal } from './hostModal';
 import { FanoutDialog } from './FanoutDialog';
+import { modelLabel } from './videoModelConfig.mjs';
 
 // 老任务（这版之前提交的）没有逐条状态，按全成功处理
 const FALLBACK_FAIL = { code: 'E5000', reason: '模型未返回结果。', fix: '直接重新生成即可。' };
@@ -33,9 +34,10 @@ function Vid({ src, label }) {
 
 /* ── 视频生成任务详情 ──
    克隆是一对一（原片 ⇄ 成片）所以左右对照；生成是一对多（一份输入 → N 条视频），
-   左边用序号选择器切换当前这条、主区放成片，右边两个 tab：
+   左边用序号选择器切换当前这条、主区放成片，右边按 Magic 状态展示来源 tab：
      你的输入      —— 你当初写的那份 brief + 参考图
      视频 N 的提示词 —— Magic Prompt 把它裂变成的这一条脚本
+   Magic Prompt 关闭时只保留「你的输入」。
    逐条脚本原先藏着不露（"后台产物"），但有 Magic Prompt 这一层在，
    "我写的" 和 "机器跑的" 之间隔了一次改写，不给看就没法归因废片。
    两份都是长内容，所以是并列 tab 而不是折叠——挤在一栏里谁也读不下去。 */
@@ -159,6 +161,7 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
   if (!task) return null;
   const generating = !['done', 'partial', 'failed'].includes(task.status);
   const multi = clips.length > 1;
+  const showGeneratedPrompt = task.toolName === '视频裂变' || task.magic !== 'off';
 
   // 逐条状态：一批里可能只挂掉几条，成功那几条照常能看能下
   const isFailed = (i) => !generating && !!(clips[i] && clips[i].status === 'failed');
@@ -170,13 +173,14 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
   /* 本条脚本。提交那一刻就配好了，不等出片——所以生成中、甚至挂掉的那条也照看不误，
      「当初到底发出去的是什么」正是废片归因要的第一手东西。 */
   const scriptHtml = (clips[active] && clips[active].promptHtml) || '';
-  // Magic=off 的那批 N 条逐字相同，tab 名就不带条号：标着「视频 3」却跟视频 1 一字不差是骗人
+  // 单条任务只发生一次扩写；共享补全批次不带条号；Magic=off 省略整个提示词 tab
   const sameScript = multi && clips.every(v => v && clips[0] && v.promptHtml === clips[0].promptHtml);
-  const scriptTab = (!multi || sameScript) ? '本批提示词' : `视频 ${active + 1} 的提示词`;
+  const scriptTab = !multi ? '扩写提示词' : sameScript ? '本批提示词' : `视频 ${active + 1} 的提示词`;
 
   /* 裂变基准读不读得出来。
      dims 是这一条各维度的取值，「其余逐字沿用」全靠它。两种情况读不出：
-       · magic=off／历史任务 —— N 条共用同一份 dims（或压根没存），
+       · magic=off／历史任务 —— dims 为空
+       · 自动档共享补全批次 —— N 条共用同一份 dims
          那这一条跟别条的差异只存在于成片像素里，说「以视频 3 为底」是空话
        · 老任务 —— 这版之前提交的，字段根本不存在
      读不出时不置灰、也不硬着头皮拿共享 dims 去变（那是骗人），而是先过一遍视频理解，
@@ -219,10 +223,11 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
      平时只把最好认的两项摊在一行上，其余悬停「详细信息」再看，不占版面。
      第三项＝这行值可不可复制：ID 类的值是拿去别处对号的（任务中心搜、跟研发报问题），
      只让人肉眼抄一遍等于没给。 */
+  const displayModel = modelLabel(task.model);
   const params = [
     ['任务 ID', task.id, 'self'],
     ['工具名称', task.toolName],
-    ['视频模型', task.model],
+    ['视频模型', displayModel],
     ['视频时长', task.outDuration],
     ['画面比例', task.aspect],
     // 参考图在下面有缩略图可看，视频/音频只报个数（模型不同能挂的种类也不同）
@@ -234,7 +239,7 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
     // 「关联产品」宿主对工具箱任务写死是 '—'，子应用收不到真值，按「没传的不显示」略过
     ['耗时', task.status === 'done' ? task.duration : ''],
   ].filter(([, v]) => v);
-  const inlineMeta = [task.model, task.outDuration].filter(Boolean);
+  const inlineMeta = [displayModel, task.outDuration].filter(Boolean);
 
   function showToast(msg) {
     setToast(msg);
@@ -459,7 +464,8 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
             </div>
           </section>
 
-          {/* 右栏＝这批视频的来源，两个 tab：你写的 brief / Magic Prompt 把它裂变成的这一条脚本。
+          {/* 右栏＝这批视频的来源：你写的 brief / Magic Prompt 把它裂变成的这一条脚本。
+              Magic Prompt 关闭时只展示用户输入。
               中间隔着一次机器改写，两份都得能看，废片才归因得了。
               复制按钮跟在【激活的那个 tab】后面而不是钉在栏右端：右栏宽 800+，
               钉右端时它离 tab 一个屏宽，看不出复制的是哪一份。 */}
@@ -471,16 +477,20 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
                   你的输入
                 </button>
                 {tab === 'input' && copyBtn}
-                <button type="button" role="tab" aria-selected={tab === 'script'}
-                  className={`vtd-tab ${tab === 'script' ? 'on' : ''}`} onClick={() => setTab('script')}
-                  disabled={!scriptHtml} title={scriptHtml ? '' : '这条任务没有脚本记录'}>
-                  {scriptTab}
-                </button>
-                {tab === 'script' && copyBtn}
+                {showGeneratedPrompt && (
+                  <>
+                    <button type="button" role="tab" aria-selected={tab === 'script'}
+                      className={`vtd-tab ${tab === 'script' ? 'on' : ''}`} onClick={() => setTab('script')}
+                      disabled={!scriptHtml} title={scriptHtml ? '' : '这条任务没有脚本记录'}>
+                      {scriptTab}
+                    </button>
+                    {tab === 'script' && copyBtn}
+                  </>
+                )}
               </div>
             </div>
 
-            {tab === 'input' ? (
+            {tab === 'input' || !showGeneratedPrompt ? (
               <>
                 {/* 这批是从别的任务裂变出来的：来路写在最前面，否则「我当初写的」跟成片对不上号。
                     只写「裂变自视频 2」是一句认不出的话——用户手里几十条任务，光凭序号想不起是哪条片。

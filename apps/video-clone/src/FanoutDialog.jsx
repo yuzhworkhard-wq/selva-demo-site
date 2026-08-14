@@ -1,17 +1,21 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { X, ArrowUp, Lock, AlertCircle, Loader2, Eye, Film, Music, ChevronDown, Check } from 'lucide-react';
 import { notifyHostModal } from './hostModal';
-import { steerToDims, readVideoDims } from './briefParser';
+import { steerToDims, fanoutPresetKeys, readVideoDims } from './briefParser';
 import {
-  ModelPicker, Stepper, AutoTextarea, modelCfg,
-  AddRefButton, LibraryPickDialog, REF_KINDS, kindLabel,
+  ModelPicker, Stepper, AutoTextarea, AddRefButton, LibraryPickDialog,
 } from './VideoGenModal';
+import { modelCfg, REF_KINDS, kindLabel } from './videoModelConfig.mjs';
 
 const PRESET_LEVELS = [
   { value: 'basic', label: '初级', description: '保持主题，仅调整人物、场景或视觉呈现。' },
   { value: 'medium', label: '中级', description: '保留核心信息，重组叙事结构与关键表达。' },
   { value: 'advanced', label: '高级', description: '保留创作目标，重新构建内容策略与表达方式。' },
 ];
+
+const toRefItems = list => (list || []).map(item => (
+  typeof item === 'string' ? { url: item, name: '' } : item
+));
 
 function FanoutPresetControl({ value, onChange }) {
   const [open, setOpen] = useState(false);
@@ -91,7 +95,11 @@ function FanoutPresetControl({ value, onChange }) {
    素材 chip、中间 textarea、底栏左＝加素材、右＝生成选项 + 圆形发送。
    画幅/时长走 idea-pick--locked 锁定态，因为一旦跟着改，出来的片子就跟基准条不可比了。 */
 
-export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = false }) {
+export function FanoutPanel({
+  task, baseIndex, onClose, onSubmit, needsRead = false, modal = false,
+  initialValues = null, onRefsHandedOff = null, layout = 'card',
+}) {
+  const inline = !modal && layout === 'inline';
   const base = (task.variants && task.variants[baseIndex]) || null;
 
   /* 视频理解：读不出基准时先跑这一道。
@@ -114,26 +122,34 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
   }, [needsRead, task, baseIndex]);
   const baseDims = readDims || [];
 
-  const [steer, setSteer] = useState('');
+  const [steer, setSteer] = useState(initialValues?.steer || '');
   /* 变哪几维只在后台算，界面上不摆：用户写了什么就变什么，没写的沿用基准条。
      让他先确认「你是说人物设定吗」是把系统的活推给用户干。 */
-  const [model, setModel] = useState(task.model || 'Seedance 2.0');
-  const [count, setCount] = useState(4);
+  const [model, setModel] = useState(initialValues?.model || task.model || 'Seedance 2.0');
+  const [count, setCount] = useState(initialValues?.count || 4);
   /* 自动裂变：用户不写自定义指令时，可按三个层级自动生成变化。 */
-  const [preset, setPreset] = useState('basic'); // null | 'basic' | 'medium' | 'advanced'
+  const [preset, setPreset] = useState(
+    initialValues ? (initialValues.preset || null) : 'basic',
+  ); // null | 'basic' | 'medium' | 'advanced'
   const [sending, setSending] = useState(false);
   /* 参考素材：跟第一步那张输入卡同一套入口（本地上传 / 资源库），同一套模型配额。
      裂变时最常见的动作就是「换成这张脸/这个场景」——没有图，那句话说不清楚。 */
-  const [refImages, setRefImages] = useState([]);
-  const [refVideos, setRefVideos] = useState([]);
-  const [refAudios, setRefAudios] = useState([]);
+  const [refImages, setRefImages] = useState(() => toRefItems(initialValues?.images));
+  const [refVideos, setRefVideos] = useState(() => toRefItems(initialValues?.refVideos));
+  const [refAudios, setRefAudios] = useState(() => toRefItems(initialValues?.refAudios));
   const [libOpen, setLibOpen] = useState(false);
   const objUrls = useRef([]);
-  useEffect(() => () => objUrls.current.forEach(u => URL.revokeObjectURL(u)), []);
+  const refsHandedOffRef = useRef(false);
+  useEffect(() => () => {
+    if (!refsHandedOffRef.current) objUrls.current.forEach(u => URL.revokeObjectURL(u));
+  }, []);
   const refs = { image: refImages, video: refVideos, audio: refAudios };
   const setRefs = { image: setRefImages, video: setRefVideos, audio: setRefAudios };
 
-  const varyKeys = useMemo(() => steerToDims(steer).map(d => d.key), [steer]);
+  const varyKeys = useMemo(
+    () => preset ? fanoutPresetKeys(preset) : steerToDims(steer).map(d => d.key),
+    [preset, steer],
+  );
 
   const clearPresetForInput = () => { if (preset) setPreset(null); };
   const setPresetMode = value => {
@@ -141,13 +157,14 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
     if (value) setSteer('');
   };
 
-  // 弹窗开着时同步宿主遮罩，嵌入态下才有「全视口居中」的观感
+  // 任务详情弹窗需要同步宿主遮罩；整页视频裂变流程由页面外壳管理遮罩。
   useEffect(() => {
+    if (!modal) return undefined;
     notifyHostModal(true);
     const onKey = (e) => { if (e.key === 'Escape' && !libOpen) onClose(); };
     window.addEventListener('keydown', onKey);
     return () => { window.removeEventListener('keydown', onKey); notifyHostModal(false); };
-  }, [onClose, libOpen]);
+  }, [modal, onClose, libOpen]);
 
   /* 本地上传：一个文件框收全部类型，按 file.type 自己归类，超出模型配额的直接不收 */
   const addLocalFiles = (fileList) => {
@@ -183,6 +200,8 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
   const submit = () => {
     if (blocked) return;
     setSending(true);
+    refsHandedOffRef.current = true;
+    onRefsHandedOff?.();
     // 反解出来的基准要一起交出去：新任务的「其余逐字沿用」以它为准，
     // 不能让下游再去读那份共用的 dims（那份读不出这一条）
     onSubmit({
@@ -192,32 +211,34 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
     });
   };
 
-  return (
-    <div className="resume-overlay" onClick={onClose}>
-      <div className="fo-dialog" role="dialog" aria-modal="true" aria-label="裂变"
-        onClick={e => e.stopPropagation()}>
-        <div className="fo-head">
-          <div>
-            <h3 className="resume-title">裂变</h3>
-            <p className="resume-desc">以这一条为底，你说改什么就改什么，没说的原样不动</p>
-          </div>
-          <button className="icon-btn" onClick={onClose} title="关闭"><X size={18} /></button>
-        </div>
+  const content = (
+      <>
+        {!inline && (
+          <>
+            <div className="fo-head">
+              <div>
+                <h3 className="resume-title">裂变</h3>
+                <p className="resume-desc">以这一条为底，你说改什么就改什么，没说的原样不动</p>
+              </div>
+              <button className="icon-btn" onClick={onClose} title="关闭"><X size={18} /></button>
+            </div>
 
-        {/* 基准条：控制变量的前提摆在最显眼处，用户不会误以为是从零重开 */}
-        <div className="fo-base">
-          <span className="fo-base-th">
-            <video src={task.cloneUrl} preload="metadata" muted playsInline
-              onLoadedData={e => { try { e.currentTarget.currentTime = 0.1 + baseIndex * 0.6; } catch {} }} />
-          </span>
-          <span className="fo-base-txt">
-            <em>基准</em>
-            <b>视频 {baseIndex + 1}{baseTag ? ` · ${baseTag}` : ''}</b>
-          </span>
-          {/* 分析中时这里留空：下面那条横幅已经在说「正在分析画面」，
-              同一句话在同一个弹窗里出现两遍是噪音 */}
-          {!reading && <span className="fo-base-tail">没说到的部分逐字沿用</span>}
-        </div>
+            {/* 基准条：控制变量的前提摆在最显眼处，用户不会误以为是从零重开 */}
+            <div className="fo-base">
+              <span className="fo-base-th">
+                <video src={task.cloneUrl} preload="metadata" muted playsInline
+                  onLoadedData={e => { try { e.currentTarget.currentTime = 0.1 + baseIndex * 0.6; } catch {} }} />
+              </span>
+              <span className="fo-base-txt">
+                <em>基准</em>
+                <b>视频 {baseIndex + 1}{baseTag ? ` · ${baseTag}` : ''}</b>
+              </span>
+              {/* 分析中时这里留空：下面那条横幅已经在说「正在分析画面」，
+                  同一句话在同一个弹窗里出现两遍是噪音 */}
+              {!reading && <span className="fo-base-tail">没说到的部分逐字沿用</span>}
+            </div>
+          </>
+        )}
 
         {/* 为什么要等这一下：这批没开 Magic Prompt（或是历史任务），N 条提示词一模一样，
             文字里读不出这一条长什么样，只能先看片。说清楚了用户才不觉得是卡住了。 */}
@@ -318,7 +339,24 @@ export function FanoutDialog({ task, baseIndex, onClose, onSubmit, needsRead = f
             onClose={() => setLibOpen(false)}
           />
         )}
-      </div>
+      </>
+  );
+
+  const panel = (
+    <div className={inline ? 'fo-inline' : 'fo-dialog'} role={modal ? 'dialog' : 'region'}
+      aria-modal={modal ? 'true' : undefined} aria-label="裂变"
+      onClick={modal ? e => e.stopPropagation() : undefined}>
+      {content}
     </div>
   );
+  if (!modal) return panel;
+  return (
+    <div className="resume-overlay" onClick={onClose}>
+      {panel}
+    </div>
+  );
+}
+
+export function FanoutDialog(props) {
+  return <FanoutPanel {...props} modal />;
 }

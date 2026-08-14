@@ -524,6 +524,12 @@ body {
   box-shadow: 0 14px 44px rgba(0, 0, 0, 0.5);
   display: block;
 }
+/* 裂变入口海报本身就是完整构图，按 2:3 完整放下，避免裁掉标题和底下一排卡片 */
+.upload-showcase-img--poster {
+  aspect-ratio: 2 / 3;
+  object-fit: contain;
+  background: transparent;
+}
 
 .upload-hero-right {
   flex: 1;
@@ -730,7 +736,12 @@ body {
   }
   .upload-showcase-img { max-width: 300px; }
   .upload-hero-right { padding: 28px 24px; gap: 20px; }
+  .upload-hero-right-fill { padding: 28px 24px; gap: 20px; }
   .upload-hero-title { font-size: 25px; }
+  /* 上传完成后右侧已有视频预览 + 输入卡，窄屏再铺一张展示图会把选项顶出首屏 */
+  .step-content--with-extra .upload-hero-left { display: none; }
+  /* 左侧藏掉后没有海报定高，给右栏一个固定下限，避免开关自动时外框跟着跳 */
+  .step-content--with-extra .upload-hero-right--locked { min-height: 520px; }
 }
 
 /* 窄视口收起侧边菜单，内容占满 */
@@ -4801,12 +4812,25 @@ body {
 .mp-panel {
   position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 60;
   display: flex; align-items: stretch;
-  width: 560px;
+  width: min(560px, calc(100vw - 24px));
   background: var(--bg-elevated); border: 1px solid var(--border-light);
   border-radius: 14px; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
   overflow: hidden;
 }
 .mp-panel--flip { left: auto; right: 0; }
+@media (max-width: 583px) {
+  .mp-panel--model,
+  .mp-panel--model.mp-panel--flip {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: var(--mp-mobile-bottom, 72px);
+    width: auto;
+    max-height: calc(100dvh - var(--mp-mobile-bottom, 72px) - 12px);
+  }
+  .mp-panel--model .mp-fams { flex-basis: 42%; min-width: 0; }
+  .mp-panel--model .mp-vers { min-width: 0; overflow-y: auto; }
+}
 .mp-fams {
   flex: 0 0 188px; display: flex; flex-direction: column; gap: 2px;
   padding: 8px; border-right: 1px solid var(--border);
@@ -5559,6 +5583,71 @@ body {
   box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.7);
   animation: slideUp 200ms ease;
 }
+/* 工具箱整页裂变：输入卡贴在上传预览下方，不另开一张从底部滑上来的面板 */
+.fo-inline {
+  width: 100%;
+  animation: fadeIn 180ms ease;
+}
+.fo-inline .composer {
+  max-width: none;
+  margin: 0;
+}
+/* 已上传：外框高度只跟左侧海报走。右栏本体不再贡献高度，
+   内容绝对铺满这一格；里面的视频框吃剩余高度，参数卡变高它就变矮。 */
+.upload-hero-right-flow { display: contents; }
+.upload-hero-right--locked { position: relative; }
+.upload-hero-right-fill {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 40px 44px;
+  min-height: 0;
+  overflow: hidden;
+}
+.step-content--with-extra .upload-hero-head,
+.step-content--with-extra .upload-hero-extra {
+  flex: 0 0 auto;
+}
+.step-content--with-extra .upload-panel {
+  flex: 1 1 0;
+  min-height: 140px;
+}
+.step-content--with-extra .upload-panel-media {
+  height: calc(100% - 24px);
+  width: auto;
+  max-width: calc(100% - 32px);
+}
+.video-fanout-step { align-items: center; }
+.video-fanout-step .step-actions { width: 100%; max-width: 680px; }
+.video-fanout-sending {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: auto;
+  font-size: 12px; color: var(--text-secondary);
+}
+@media (max-width: 640px) {
+  .video-fanout-step { padding-left: 20px; padding-right: 20px; }
+  .fo-dialog { padding: 22px 20px 20px; }
+  .fo-dialog .fo-base-tail { display: none; }
+  .fo-dialog .composer-bar,
+  .fo-inline .composer-bar {
+    flex-direction: column; align-items: stretch; gap: 12px;
+  }
+  .fo-dialog .composer-bar-left,
+  .fo-dialog .composer-bar-right,
+  .fo-inline .composer-bar-left,
+  .fo-inline .composer-bar-right { width: 100%; }
+  .fo-dialog .composer-bar-left,
+  .fo-inline .composer-bar-left { justify-content: flex-start; }
+  .fo-dialog .composer-bar-right,
+  .fo-inline .composer-bar-right { justify-content: space-between; gap: 0; }
+  .fo-dialog .composer-send,
+  .fo-inline .composer-send { margin-left: 2px; }
+  .fo-dialog .idea-pick-btn,
+  .fo-inline .idea-pick-btn { padding-left: 5px; padding-right: 5px; }
+  .fo-dialog .mp .idea-pick-val,
+  .fo-inline .mp .idea-pick-val { max-width: 78px; overflow: hidden; text-overflow: ellipsis; }
+}
 .fo-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .fo-head .resume-desc { margin-top: 6px; }
 
@@ -5630,6 +5719,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .fo-steer-collapse, .fo-ref-collapse, .composer-bar, .fo-preset-switch, .fo-preset-switch i { transition: none; }
+  .fo-inline { animation: none; }
 }
 
 /* 弹窗里的输入卡不受首页那套居中/限宽约束，撑满面板 */

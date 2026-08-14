@@ -16,7 +16,7 @@ process.on('exit', () => { try { unlinkSync(shim); } catch {} });
 
 const {
   parseBrief, pickVariant, buildVariantScripts, buildFanoutScripts,
-  steerToDims, FANOUT_DIMS, readVideoDims,
+  steerToDims, fanoutPresetKeys, FANOUT_DIMS, readVideoDims,
 } = await import(shim);
 
 let fail = 0;
@@ -36,6 +36,9 @@ ok(steerToDims('开场首句换一下').map(d => d.key).includes('firstLine'), '
 ok(steerToDims('人物和服装都换').map(d => d.key).sort().join() === 'character,outfit', '一句话可认出多维');
 ok(steerToDims('随便变变').length === 0, '认不出来就返回空，不瞎猜');
 ok(steerToDims('').length === 0, '空指令返回空');
+ok(fanoutPresetKeys('basic').join() === 'character,setting,lighting', '自动初级映射人物 / 场景 / 光线');
+ok(fanoutPresetKeys('medium').includes('script'), '自动中级包含叙事表达变化');
+ok(fanoutPresetKeys('advanced').includes('cta'), '自动高级包含内容策略与收尾变化');
 
 console.log('\n── 2. 首次生成的 variant 带上了维度取值 ──');
 const first = buildVariantScripts(BRIEF, [], 'on', 4);
@@ -46,6 +49,21 @@ ok(new Set(first.map(v => v.dims.find(d => d.key === 'character').value)).size =
 
 const off = buildVariantScripts(BRIEF, [], 'off', 3);
 ok(new Set(off.map(v => v.promptHtml)).size === 1, 'magic=off 时 3 条脚本逐字相同');
+ok(off.every(v => Array.isArray(v.dims) && v.dims.length === 0),
+  'magic=off 时不生成维度取值');
+ok(off.every(v => v.promptHtml === `<p>${BRIEF}</p>`),
+  'magic=off 时模型提示词直接使用用户原始输入');
+ok(off.every(v => !v.promptHtml.includes('自动补全') && !v.promptHtml.includes('【分镜】')),
+  'magic=off 时不生成扩写段落');
+const offEscaped = buildVariantScripts('保留 <产品名> & 原文', [], 'off', 1);
+ok(offEscaped[0].promptHtml === '<p>保留 &lt;产品名&gt; &amp; 原文</p>',
+  'magic=off 的原始输入经过 HTML 转义后再保存');
+
+const singleOn = buildVariantScripts(BRIEF, [], 'on', 1);
+ok(singleOn.length === 1, 'magic=on 且只生成 1 条时只产出一份提示词');
+ok(singleOn[0].dims.length > 0, 'magic=on 且只生成 1 条时保留扩写维度');
+ok(singleOn[0].promptHtml.includes('自动补全'), 'magic=on 且只生成 1 条时执行扩写');
+ok(!singleOn[0].promptHtml.includes('本条差异'), '单条扩写不使用批次差异标题');
 
 console.log('\n── 3. 定向裂变＝控制变量 ──');
 const parsed = parseBrief(BRIEF);
@@ -113,13 +131,13 @@ ok(bankless.length === 0,
   `每一维点了都真的会变${bankless.length ? '（哑火：' + bankless.map(d => d.key).join() + '）' : ''}`);
 
 /* ── 8. magic=off／历史任务：基准读不出来，必须先过视频理解 ──
-   这是用户点出来的坑：off 档 N 条提示词逐字相同、dims 也逐字相同，
+   这是用户点出来的坑：off 档 N 条提示词逐字相同、dims 为空，
    此时说「以视频 3 为底」是空话——差异只存在于成片像素里。
    不跑理解就拿那份共用 dims 去变，出来的东西跟视频 3 长什么样毫无关系。 */
 console.log('\n── 8. 读不出基准时的视频理解 ──');
 const offBatch = buildVariantScripts(BRIEF, [], 'off', 4);
-ok(new Set(offBatch.map(v => JSON.stringify(v.dims))).size === 1,
-  '前提：magic=off 时 4 条的 dims 逐字相同（所以读不出某一条）');
+ok(offBatch.every(v => Array.isArray(v.dims) && v.dims.length === 0),
+  '前提：magic=off 时 4 条的 dims 都为空（所以读不出某一条）');
 
 const offTask = { sourceText: BRIEF, images: [], magic: 'off', variants: offBatch };
 const read1 = readVideoDims(offTask, 0);

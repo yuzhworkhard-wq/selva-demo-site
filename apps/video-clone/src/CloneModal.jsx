@@ -179,7 +179,7 @@ export function CloneModal({
   );
 }
 
-function StepIndicator({ steps, current }) {
+export function StepIndicator({ steps, current }) {
   return (
     <div className="step-indicator">
       {steps.map((s, i) => (
@@ -328,7 +328,14 @@ function StepCrop({ videoUrl, onNext, onBack }) {
 }
 
 /* ── Step 1: Upload ── */
-function StepUpload({ onNext, videoFile, onVideoFile, videoUrl, onVideoUrl, protectedUrl = null }) {
+export function StepUpload({
+  onNext, videoFile, onVideoFile, videoUrl, onVideoUrl, protectedUrl = null,
+  title = '克隆爆款，', accent = '放大赢面', description = null, autoAdvance = false,
+  afterDone = null,
+  showcaseSrc = 'clone-showcase.jpg',
+  showcaseAlt = 'AI 克隆效果展示',
+  showcaseClass = '',
+}) {
   const file = videoFile;        // 视频状态提升到 CloneModal，返回裁剪步骤后仍保留
   const setFile = onVideoFile;
   const setVideoUrl = onVideoUrl;
@@ -347,7 +354,10 @@ function StepUpload({ onNext, videoFile, onVideoFile, videoUrl, onVideoUrl, prot
     setVideoUrl(URL.createObjectURL(f));
     setPhase('uploading');
     clearTimeout(uploadTimer.current);
-    uploadTimer.current = setTimeout(() => setPhase('done'), 1500);  // 模拟上传
+    uploadTimer.current = setTimeout(() => {
+      setPhase('done');
+      if (autoAdvance) onNext();
+    }, 1500);  // 模拟上传
   };
 
   const removeFile = () => {
@@ -373,20 +383,23 @@ function StepUpload({ onNext, videoFile, onVideoFile, videoUrl, onVideoUrl, prot
     { icon: Eye, text: '画面清晰 · 无水印' },
   ];
 
+  const showExtra = phase === 'done' && afterDone;
+
   return (
-    <div className="step-content">
+    <div className={`step-content${showExtra ? ' step-content--with-extra' : ''}`}>
       <div className="upload-hero">
         {/* 左：克隆效果展示图（竖版，四周留边完整展示不裁切）*/}
         <div className="upload-hero-left">
-          <img src="clone-showcase.jpg" alt="AI 克隆效果展示" className="upload-showcase-img" />
+          <img src={showcaseSrc} alt={showcaseAlt} className={`upload-showcase-img${showcaseClass ? ` ${showcaseClass}` : ''}`} />
         </div>
 
         {/* 右：上传参考视频 / 使用链接 */}
-        <div className="upload-hero-right">
+        <div className={`upload-hero-right${showExtra ? ' upload-hero-right--locked' : ''}`}>
+          <div className={showExtra ? 'upload-hero-right-fill' : 'upload-hero-right-flow'}>
           <div className="upload-hero-head">
-            <h2 className="upload-hero-title">克隆爆款，<span className="accent-text">放大赢面</span></h2>
+            <h2 className="upload-hero-title">{title}<span className="accent-text">{accent}</span></h2>
             <p className="upload-hero-desc">
-              上传一条想复刻的参考视频，AI 自动拆解镜头、改写台词，生成符合目标地区的多语种广告克隆片
+              {description || '上传一条想复刻的参考视频，AI 自动拆解镜头、改写台词，生成符合目标地区的多语种广告克隆片'}
             </p>
           </div>
 
@@ -446,18 +459,23 @@ function StepUpload({ onNext, videoFile, onVideoFile, videoUrl, onVideoUrl, prot
             </div>
           )}
 
-          <div className="upload-tips">
-            {tips.map(t => (
-              <span key={t.text} className="upload-tip">
-                <t.icon size={13} strokeWidth={1.8} />
-                {t.text}
-              </span>
-            ))}
-          </div>
+          {showExtra ? <div className="upload-hero-extra">{afterDone}</div> : (
+            <div className="upload-tips">
+              {tips.map(t => (
+                <span key={t.text} className="upload-tip">
+                  <t.icon size={13} strokeWidth={1.8} />
+                  {t.text}
+                </span>
+              ))}
+            </div>
+          )}
 
-          <button className="btn-primary upload-next" disabled={!canProceed} onClick={onNext}>
-            下一步 <ChevronRight size={16} />
-          </button>
+          {!autoAdvance && !afterDone && (
+            <button className="btn-primary upload-next" disabled={!canProceed} onClick={onNext}>
+              下一步 <ChevronRight size={16} />
+            </button>
+          )}
+          </div>
         </div>
       </div>
     </div>

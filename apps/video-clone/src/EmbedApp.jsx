@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CloneModal } from './CloneModal';
 import { VideoGenModal } from './VideoGenModal';
+import { VideoFanoutModal } from './VideoFanoutModal';
 import { CloneTaskDetail } from './CloneTaskDetail';
 import { VideoGenTaskDetail } from './VideoGenTaskDetail';
 import { buildFanoutScripts, buildVariantScripts, readVideoDims, FANOUT_DIMS } from './briefParser';
@@ -13,6 +14,7 @@ import './styles.css';
    子 → 父 {type:'selva-clone-task', task:{...}}          任务新建/状态更新（宿主任务中心 upsert 列表行）
    父 → 子 {type:'selva-clone-open'}                      从工具箱打开克隆流程
    父 → 子 {type:'selva-vgen-open'}                       从工具箱打开视频生成流程
+   父 → 子 {type:'selva-vfanout-open'}                    从工具箱打开视频裂变流程
    父 → 子 {type:'selva-clone-hide'}                      宿主侧栏切换走（暂停视频、标记关闭态）
    父 → 子 {type:'selva-clone-open-task', id}             从任务中心打开任务详情
    父 → 子 {type:'selva-clone-seed', tasks:[...]}         平台里那些「早于本次会话」的视频生成任务，
@@ -88,8 +90,8 @@ function fillSeedScripts(task, byId = {}, seen = new Set()) {
     const base = baseSeed ? fillSeedScripts(baseSeed, byId, new Set([...seen, task.id])) : null;
     const baseIndex = from.baseIndex || 0;
     const varyKeys = from.varyKeys || [];
-    /* readVideoDims 自己判断读不读得出：基准批 magic=off 时 N 条 dims 共用，
-       它会像真人点裂变那样反解画面，而不是照抄那份分不清谁是谁的共享取值。 */
+    /* readVideoDims 自己判断读不读得出：基准批 magic=off 时 dims 为空，
+       自动档的共享补全批次则是 N 条 dims 相同；两种情况都从画面反解基准。 */
     const baseDims = base ? readVideoDims(base, baseIndex) : [];
     const scripts = buildFanoutScripts({
       sourceText: task.sourceText || '',
@@ -127,7 +129,7 @@ export default function EmbedApp() {
   const [cloneOpen, setCloneOpen] = useState(true);   // iframe 首次加载即处于打开态
   const [cloneKey, setCloneKey] = useState(0);
   const [view, setView] = useState('flow');           // flow=工作流 | task=任务详情
-  const [flowType, setFlowType] = useState('clone');  // clone=视频克隆 | vgen=视频生成
+  const [flowType, setFlowType] = useState('clone');  // clone=视频克隆 | vgen=视频生成 | fanout=视频裂变
   const [taskId, setTaskId] = useState(null);
   const [editSeed, setEditSeed] = useState(null);     // 「重新编辑」注入：{taskId, videoUrl, promptHtml, seq}
   const [, setTick] = useState(0);                    // 任务状态变化（模拟生成完成）时刷新
@@ -157,7 +159,7 @@ export default function EmbedApp() {
     }
     const tName = p.toolName || '视频克隆';
     Object.assign(task, {
-      name: p.name || (tName === '视频生成' ? `视频生成-${p.region}` : `视频克隆-${p.region}`),
+      name: p.name || (tName === '视频生成' ? `视频生成-${p.region}` : tName === '视频裂变' ? '视频裂变' : `视频克隆-${p.region}`),
       videoUrl: p.videoUrl,
       promptHtml: p.promptHtml,
       promptText: p.promptText,
@@ -181,7 +183,7 @@ export default function EmbedApp() {
     postTaskMeta(task);
     genTimers.current.push(setTimeout(() => {
       // 逐条落状态：视频生成才有失败一说，克隆是一对一走原路径
-      if (tName === '视频生成' && Array.isArray(task.variants)) {
+      if ((tName === '视频生成' || tName === '视频裂变') && Array.isArray(task.variants)) {
         const total = task.variants.length;
         task.variants = task.variants.map((v, i) => {
           const fail = decideClipFail(i, total, task.sourceText);
@@ -203,6 +205,7 @@ export default function EmbedApp() {
   // idx = 序号 | 序号数组（失败重试一次带走好几条）| 不传（整批重来）
   const regenerate = (task, idx) => {
     if (!task) return;
+    const isFanout = task.toolName === '视频裂变';
     const wanted = Array.isArray(idx) ? idx : (typeof idx === 'number' ? [idx] : null);
     // 挑出要重来的那几条，并把上一轮的失败痕迹抹掉——新任务从干净状态开始跑
     const picked = (wanted && task.variants)
@@ -219,8 +222,12 @@ export default function EmbedApp() {
       sourceText: task.sourceText,
       images: task.images, refVideos: task.refVideos, refAudios: task.refAudios,
       model: task.model, aspect: task.aspect, outDuration: task.outDuration, magic: task.magic,
-      name: picked ? (picked.length > 1 ? `视频生成 · ${picked.length} 条` : '视频生成') : task.name,
-      region: task.region, toolName: task.toolName,
+      name: picked
+        ? (picked.length > 1
+          ? (isFanout ? `视频裂变 · ${picked.length} 条` : `视频生成 · ${picked.length} 条`)
+          : (isFanout ? '视频裂变' : '视频生成'))
+        : task.name,
+      region: task.region, toolName: task.toolName, fanoutFrom: task.fanoutFrom,
     });
   };
 
@@ -228,7 +235,10 @@ export default function EmbedApp() {
      跟重新生成同一条铁律：原任务与详情页零变化，反馈只有顶部轻提示。
      出参里画幅沿用基准条不给改（改了就跟它不可比），时长可能被新模型带走，
      面板上已经把这件事说破了，这里照面板算出来的值走。 */
-  const fanout = (task, { baseIndex, steer, varyKeys, model, count, duration, baseDims, readBase, images, refVideos, refAudios }) => {
+  const fanout = (task, {
+    baseIndex, steer, varyKeys, model, count, duration, baseDims, readBase, preset,
+    images, refVideos, refAudios,
+  }) => {
     const base = task.variants && task.variants[baseIndex];
     if (!base) return;
     // baseDims 由面板给：读不出基准时它是视频理解反解出来的那一组，比 base.dims 新鲜
@@ -252,15 +262,18 @@ export default function EmbedApp() {
       images: imgs,
       refVideos: [...(task.refVideos || []), ...(refVideos || [])],
       refAudios: [...(task.refAudios || []), ...(refAudios || [])],
-      model, aspect: task.aspect, outDuration: duration, magic: task.magic,
-      name: `视频生成 · 裂变 ${count} 条`,
+      model, aspect: task.aspect, outDuration: duration, magic: preset ? 'auto' : null,
+      name: `${task.toolName === '视频裂变' ? '视频裂变 ·' : '视频生成 · 裂变'} ${count} 条`,
       region: task.region, toolName: task.toolName,
       // 新任务详情里的来路：没有这个，「你的输入」跟成片就对不上号了。
       // readBase 记下基准是反解来的——它不是用户写的，来源得说清楚。
       // 这条路径的基准必是某条任务的变体，所以带 taskId；
       // 将来若开「传一段自己的片子直接裂变」的入口，改带 {videoUrl}（没有来源任务可指），
       // 详情页对两种形状都认（fromTaskId 有无决定「来源任务」那行出不出）
-      fanoutFrom: { taskId: task.id, baseIndex, steer, dimLabels, readBase: !!readBase },
+      fanoutFrom: {
+        taskId: task.id, baseIndex, steer, dimLabels, readBase: !!readBase,
+        varyKeys, preset: preset || null,
+      },
     });
   };
 
@@ -270,7 +283,8 @@ export default function EmbedApp() {
   //   视频克隆 → 第三步提示词（一对一，只有那一份提示词是可编辑的东西）。
   // 同时通知宿主把侧栏切到工具箱态（工作流属于工具箱功能，不该还高亮任务中心）
   const reEdit = (task) => {
-    const isGen = task.toolName === '视频生成';
+    const isGen = task.toolName === '视频生成' || task.toolName === '视频裂变';
+    const isFanout = task.toolName === '视频裂变';
     setEditSeed({
       taskId: isGen ? null : task.id,
       videoUrl: task.videoUrl,
@@ -280,10 +294,11 @@ export default function EmbedApp() {
       refVideos: task.refVideos || [], refAudios: task.refAudios || [],
       count: (task.variants && task.variants.length) || 1,
       model: task.model, aspect: task.aspect, outDuration: task.outDuration, magic: task.magic,
+      fanoutFrom: task.fanoutFrom,
       seq: (editSeed ? editSeed.seq : 0) + 1,
     });
     setView('flow');
-    setFlowType(isGen ? 'vgen' : 'clone');
+    setFlowType(isFanout ? 'fanout' : isGen ? 'vgen' : 'clone');
     window.parent.postMessage({ type: 'selva-clone-nav', section: 'toolbox' }, '*');
   };
 
@@ -303,13 +318,14 @@ export default function EmbedApp() {
       }
       if (t === 'selva-clone-open') { setFlowType('clone'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-vgen-open') { setFlowType('vgen'); setView('flow'); setCloneOpen(true); }
+      if (t === 'selva-vfanout-open') { setFlowType('fanout'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-clone-hide') setCloneOpen(false);
       if (t === 'selva-clone-open-task') {
         const id = e.data.id;
         const task = taskStore.find(x => x.id === id);
         setTaskId(id);
         if (task) {
-          setFlowType(task.toolName === '视频生成' ? 'vgen' : 'clone');
+          setFlowType(task.toolName === '视频生成' ? 'vgen' : task.toolName === '视频裂变' ? 'fanout' : 'clone');
         }
         setView('task');
         setCloneOpen(true);
@@ -333,7 +349,7 @@ export default function EmbedApp() {
   return (
     <>
       {view === 'flow' && cloneOpen && (
-        flowType === 'vgen' ? (
+          flowType === 'vgen' ? (
           <VideoGenModal
             key={`${cloneKey}:${editSeed ? editSeed.seq : 0}`}
             visible={cloneOpen && view === 'flow'}
@@ -351,6 +367,25 @@ export default function EmbedApp() {
             initialDuration={editSeed ? editSeed.outDuration : null}
             initialMagic={editSeed ? editSeed.magic : null}
           />
+        ) : flowType === 'fanout' ? (
+          <VideoFanoutModal
+            key={`${cloneKey}:${editSeed ? editSeed.seq : 0}`}
+            visible={cloneOpen && view === 'flow'}
+            embedded
+            onClose={closeClone}
+            onRestart={resetFlow}
+            onSubmitTask={submitTask}
+            initialVideoUrl={editSeed ? editSeed.videoUrl : null}
+            initialFanout={editSeed ? {
+              steer: editSeed.fanoutFrom?.steer || '',
+              preset: editSeed.fanoutFrom?.preset || (editSeed.magic === 'auto' ? 'basic' : null),
+              count: editSeed.count,
+              model: editSeed.model,
+              images: editSeed.images,
+              refVideos: editSeed.refVideos,
+              refAudios: editSeed.refAudios,
+            } : null}
+          />
         ) : (
           <CloneModal
             key={`${cloneKey}:${editSeed ? editSeed.seq : 0}`}
@@ -367,7 +402,7 @@ export default function EmbedApp() {
         )
       )}
       {view === 'task' && cloneOpen && curTask && (
-        curTask.toolName === '视频生成' ? (
+        (curTask.toolName === '视频生成' || curTask.toolName === '视频裂变') ? (
           <VideoGenTaskDetail
             task={curTask}
             baseTask={baseTask}

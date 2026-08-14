@@ -1504,12 +1504,14 @@ function toast(msg) {
 function openToolDetail(toolId) {
   if (toolId === 'tool-clone') { openCloneTool(); return; }   // 视频克隆是整页应用，走全屏 iframe 不走详情页
   if (toolId === 'tool-video') { openVideoGenTool(); return; } // 视频生成走 Prompt 裂变 modal 向导（利用同个 iframe 承载）
+  if (toolId === 'tool-video-fanout') { openVideoFanoutTool(); return; }
   currentToolDetail = toolId;
   renderWorkspace();
 }
 
 // ===== 视频克隆与生成工具：clone/ 下的独立应用，全屏 iframe 承载 =====
 // 关闭只隐藏不销毁 iframe：中断退出的进度留在子应用里，再次打开由它弹「是否继续」
+let pendingCloneFlowType = 'selva-clone-open';
 function ensureCloneFrame() {
   let overlay = document.getElementById('cloneToolOverlay');
   if (!overlay) {
@@ -1523,6 +1525,7 @@ function ensureCloneFrame() {
   return overlay;
 }
 function openCloneTool() {
+  pendingCloneFlowType = 'selva-clone-open';
   const overlay = ensureCloneFrame();
   overlay.style.display = 'block';
   const frame = overlay.querySelector('iframe');
@@ -1530,10 +1533,18 @@ function openCloneTool() {
   if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-clone-open' }, '*');
 }
 function openVideoGenTool() {
+  pendingCloneFlowType = 'selva-vgen-open';
   const overlay = ensureCloneFrame();
   overlay.style.display = 'block';
   const frame = overlay.querySelector('iframe');
   if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-vgen-open' }, '*');
+}
+function openVideoFanoutTool() {
+  pendingCloneFlowType = 'selva-vfanout-open';
+  const overlay = ensureCloneFrame();
+  overlay.style.display = 'block';
+  const frame = overlay.querySelector('iframe');
+  if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-vfanout-open' }, '*');
 }
 // 页面空闲时预载克隆子应用（下载/挂载成本移到点击之前，点开即显示）
 window.addEventListener('load', () => {
@@ -1559,12 +1570,13 @@ function openCloneTaskDetail(taskId) {
 }
 // 子应用上报的克隆/生成任务（新建/状态更新）→ 任务中心列表行
 function upsertCloneTask(meta) {
-  const isVGen = meta.toolName === '视频生成';
+  const isVGen = meta.toolName === '视频生成' || meta.toolName === '视频裂变';
+  const isFanout = meta.toolName === '视频裂变';
   // 一批里可能只挂掉几条：failedCount/totalCount 由子应用逐条汇总后报上来
   const failed = Number(meta.failedCount || 0);
   const total = Number(meta.totalCount || 0);
   const summary = {
-    completed: isVGen ? (total > 1 ? `视频生成完成 ${total} 条` : '视频生成完成') : '克隆视频 1 个',
+    completed: isVGen ? `${isFanout ? '视频裂变' : '视频生成'}完成 ${total} 条` : '克隆视频 1 个',
     partial: `${total} 条中 ${total - failed} 条成功、${failed} 条失败`,
     failed: total > 1 ? `${total} 条全部生成失败` : '生成失败',
   };
@@ -1576,7 +1588,7 @@ function upsertCloneTask(meta) {
     toolName: meta.toolName || '视频克隆',
     product: '—',
     outputSummary: summary[meta.status]
-      || (isVGen ? '视频生成中' : '克隆视频 1 个（生成中）'),
+      || (isVGen ? `${isFanout ? '视频裂变' : '视频生成'}中` : '克隆视频 1 个（生成中）'),
     createdAt: meta.createdAt,
     duration: meta.duration || '—',
     outputTypes: ['video'],
@@ -1615,6 +1627,7 @@ window.addEventListener('message', (e) => {
     const frame = document.querySelector('#cloneToolOverlay iframe');
     if (frame && frame.contentWindow) {
       frame.contentWindow.postMessage({ type: 'selva-clone-seed', tasks: buildVGenTaskSeeds() }, '*');
+      frame.contentWindow.postMessage({ type: pendingCloneFlowType }, '*');
     }
   }
   if (e.data.type === 'selva-clone-task' && e.data.task) upsertCloneTask(e.data.task);
