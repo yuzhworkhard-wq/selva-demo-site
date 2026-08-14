@@ -260,8 +260,10 @@ export function FanoutPanel({
           </div>
         )}
 
-        <RegionMultiSelect value={regions} onChange={setRegions} />
-        <div className="region-select-hint">每个地区最多生成 4 条，本次共 {regions.length * count} 条</div>
+        <div className="region-select-row">
+          <RegionMultiSelect value={regions} onChange={setRegions} />
+          <div className="region-select-hint">每地区最多 4 条 · 共 {regions.length * count} 条</div>
+        </div>
 
         <div className={`composer composer--fanout ${preset ? 'composer--fanout-auto' : ''}`}>
           {/* 挂上来的参考素材：跟第一步那张输入卡同一种 chip */}

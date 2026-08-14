@@ -16,7 +16,7 @@ const dialog = read('src/FanoutDialog.jsx');
 const genModal = read('src/VideoGenModal.jsx');
 check(genModal.includes('const COUNT_MAX = 4;'), '视频生成单次最多 4 条');
 check(dialog.includes('<Stepper value={count} onChange={setCount} max={4}'), '视频裂变每个地区最多 4 条');
-check(dialog.includes('每个地区最多生成 4 条'), '裂变界面明确展示地区级条数上限');
+check(dialog.includes('每地区最多 4 条'), '裂变界面明确展示地区级条数上限');
 check(dialog.includes('export function FanoutPanel'), '任务详情裂变核心导出为共享 FanoutPanel');
 check(dialog.includes('return <FanoutPanel {...props} modal />'), '任务详情弹窗复用共享 FanoutPanel');
 
