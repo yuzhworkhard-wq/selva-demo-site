@@ -104,6 +104,20 @@ ok(fan[0].promptHtml.includes('只换个男女角色长相'), '带上用户那�
 ok(fan[0].promptHtml.includes('sb-lock'), '用户写死的仍然是锁定高亮');
 ok(!first[0].promptHtml.includes('sb-fan'), '首次生成（非定向）不出现 sb-fan');
 
+console.log('\n── 5b. 地区多选按地区展开 ──');
+const regional = buildFanoutScripts({
+  sourceText: BRIEF, baseDims: base, varyKeys: ['character'], steer: '换个人', count: 4,
+  regions: ['br', 'co'],
+});
+ok(regional.length === 8, '2 个地区 × 每地区 4 条 = 8 条');
+ok(regional.filter(v => v.region === 'br').length === 4 && regional.filter(v => v.region === 'co').length === 4,
+  '每个地区独立生成 4 条');
+ok(regional[0].promptHtml.includes('面向<mark') && regional[0].promptHtml.includes('巴西'),
+  '每条提示词写入目标地区');
+ok(regional[4].promptHtml.includes('哥伦比亚'), '第二个地区的提示词切换到哥伦比亚');
+ok(regional[4].dims.find(d => d.key === 'character').value.includes('哥伦比亚'),
+  '人物维度跟随目标地区人物库');
+
 console.log('\n── 6. 联动规则没被破坏 ──');
 const B3 = '为某产品制作视频，场景：户外街边';
 const p3 = parseBrief(B3);

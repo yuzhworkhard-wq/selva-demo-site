@@ -6,6 +6,8 @@ import {
   ModelPicker, Stepper, AutoTextarea, AddRefButton, LibraryPickDialog,
 } from './VideoGenModal';
 import { modelCfg, REF_KINDS, kindLabel } from './videoModelConfig.mjs';
+import { DEFAULT_VIDEO_REGION, normalizeRegions } from './videoRegionConfig.mjs';
+import { RegionMultiSelect } from './RegionMultiSelect';
 
 const PRESET_LEVELS = [
   { value: 'basic', label: '初级', description: '保持主题，仅调整人物、场景或视觉呈现。' },
@@ -126,7 +128,11 @@ export function FanoutPanel({
   /* 变哪几维只在后台算，界面上不摆：用户写了什么就变什么，没写的沿用基准条。
      让他先确认「你是说人物设定吗」是把系统的活推给用户干。 */
   const [model, setModel] = useState(initialValues?.model || task.model || 'Seedance 2.0');
-  const [count, setCount] = useState(initialValues?.count || 4);
+  const [count, setCount] = useState(() => Math.min(4, Math.max(1, initialValues?.count || 4)));
+  const [regions, setRegions] = useState(() => normalizeRegions(
+    initialValues?.regions || task.regions || task.fanoutFrom?.regions,
+    [DEFAULT_VIDEO_REGION],
+  ));
   /* 自动裂变：用户不写自定义指令时，可按三个层级自动生成变化。 */
   const [preset, setPreset] = useState(
     initialValues ? (initialValues.preset || null) : 'basic',
@@ -205,7 +211,7 @@ export function FanoutPanel({
     // 反解出来的基准要一起交出去：新任务的「其余逐字沿用」以它为准，
     // 不能让下游再去读那份共用的 dims（那份读不出这一条）
     onSubmit({
-      baseIndex, steer: steer.trim(), varyKeys, model, count, duration, baseDims,
+      baseIndex, steer: steer.trim(), varyKeys, model, count, regions, duration, baseDims,
       readBase: needsRead, preset,
       images: refImages.map(x => x.url), refVideos, refAudios,
     });
@@ -253,6 +259,9 @@ export function FanoutPanel({
             )}
           </div>
         )}
+
+        <RegionMultiSelect value={regions} onChange={setRegions} />
+        <div className="region-select-hint">每个地区最多生成 4 条，本次共 {regions.length * count} 条</div>
 
         <div className={`composer composer--fanout ${preset ? 'composer--fanout-auto' : ''}`}>
           {/* 挂上来的参考素材：跟第一步那张输入卡同一种 chip */}
@@ -322,10 +331,10 @@ export function FanoutPanel({
                   <Lock size={11} className="idea-pick-chev" />
                 </span>
               </span>
-              <Stepper value={count} onChange={setCount} title="裂变条数" />
+              <Stepper value={count} onChange={setCount} max={4} title="每个地区裂变条数" />
               <button
                 type="button" className="composer-send" disabled={blocked} onClick={submit}
-                title={reading ? '正在分析画面…' : blocked ? '先说说要变什么' : `裂变 ${count} 条`}
+                title={reading ? '正在分析画面…' : blocked ? '先说说要变什么' : `裂变 ${regions.length * count} 条`}
               >
                 {reading || sending ? <Loader2 size={16} className="spinner" /> : <ArrowUp size={17} strokeWidth={2.2} />}
               </button>

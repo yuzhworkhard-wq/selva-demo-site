@@ -13,6 +13,10 @@ const check = (condition, message) => {
 console.log('\n-- 视频裂变整页流程 --');
 
 const dialog = read('src/FanoutDialog.jsx');
+const genModal = read('src/VideoGenModal.jsx');
+check(genModal.includes('const COUNT_MAX = 4;'), '视频生成单次最多 4 条');
+check(dialog.includes('<Stepper value={count} onChange={setCount} max={4}'), '视频裂变每个地区最多 4 条');
+check(dialog.includes('每个地区最多生成 4 条'), '裂变界面明确展示地区级条数上限');
 check(dialog.includes('export function FanoutPanel'), '任务详情裂变核心导出为共享 FanoutPanel');
 check(dialog.includes('return <FanoutPanel {...props} modal />'), '任务详情弹窗复用共享 FanoutPanel');
 
@@ -57,7 +61,7 @@ check(embed.includes("flowType === 'fanout'"), 'iframe 挂载独立视频裂变�
 check(embed.includes("toolName === '视频裂变'"), '视频裂变任务使用视频生成详情页');
 check(embed.includes('fanoutFrom: task.fanoutFrom'), '重新编辑保留裂变来源与设置');
 check(embed.includes("isFanout ? `视频裂变 · ${picked.length} 条`"), '视频裂变失败重试沿用视频裂变名称');
-check(embed.includes("name: `${task.toolName === '视频裂变' ? '视频裂变 ·' : '视频生成 · 裂变'} ${count} 条`"), '再次裂变名称不会重复裂变文案');
+check(embed.includes("name: `${task.toolName === '视频裂变' ? '视频裂变 ·' : '视频生成 · 裂变'} ${list.length} 条`"), '再次裂变名称按地区展开后的总条数显示');
 check(taskDetail.includes("const showGeneratedPrompt = task.toolName === '视频裂变' || task.magic !== 'off'"),
   'Magic Prompt 关闭时任务详情识别为无扩写提示词');
 check(taskDetail.includes('{showGeneratedPrompt && ('),

@@ -3,6 +3,7 @@ import { ArrowLeft, Check, Loader2, X } from 'lucide-react';
 import { StepUpload } from './CloneModal';
 import { FanoutPanel } from './FanoutDialog';
 import { buildFanoutScripts, FANOUT_DIMS, readVideoDims } from './briefParser';
+import { normalizeRegions } from './videoRegionConfig.mjs';
 
 const EMPTY_TASK = {
   id: 'uploaded-video-fanout',
@@ -58,17 +59,18 @@ export function VideoFanoutModal({
   const submit = payload => {
     if (sending || !videoUrl) return;
     setSending(true);
-    const count = payload.count || 4;
+    const count = Math.min(4, Math.max(1, payload.count || 4));
+    const regions = normalizeRegions(payload.regions);
     const baseDims = payload.baseDims && payload.baseDims.length
       ? payload.baseDims
       : readVideoDims({ sourceText: '', variants: [{}] }, 0);
     const varyKeys = payload.varyKeys || [];
     const variants = buildFanoutScripts({
       sourceText: '', imageUrls: payload.images || [], baseDims,
-      varyKeys, steer: payload.steer || '', count,
+      varyKeys, steer: payload.steer || '', count, regions,
     });
     const taskPayload = {
-      name: `视频裂变 · ${count} 条`,
+      name: `视频裂变 · ${regions.length * count} 条`,
       toolName: '视频裂变',
       videoUrl,
       cloneUrl: videoUrl,
@@ -80,10 +82,11 @@ export function VideoFanoutModal({
       refVideos: payload.refVideos || [],
       refAudios: payload.refAudios || [],
       model: payload.model,
+      regions,
       aspect: '9:16',
       outDuration: payload.duration,
       magic: payload.preset ? 'auto' : null,
-      fanoutFrom: { videoUrl, baseIndex: 0, steer: payload.steer || '',
+      fanoutFrom: { videoUrl, baseIndex: 0, steer: payload.steer || '', regions, count,
         varyKeys,
         dimLabels: varyKeys.map(key => (FANOUT_DIMS.find(dim => dim.key === key) || {}).label).filter(Boolean),
         readBase: !!payload.readBase, preset: payload.preset || null },

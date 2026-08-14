@@ -678,10 +678,10 @@ const BANK_REGION = {
 /* 一个维度该从哪个库取值：地区专用库 > 室外专用库 > 全局库。
    三条联动规则（地区-人物、室内外互斥、时段-光线同序）全靠这个优先级实现，
    所以取值这件事只能从这里走一个口子——定向裂变也调它，不另抄一份。 */
-function bankFor(parsed, key) {
+function bankFor(parsed, key, regionOverride = '') {
   const fixedSetting = parsed.locked.find(x => x.key === 'setting')?.value || '';
   const outdoor = OUTDOOR_RE.test(fixedSetting);
-  const fixedRegion = parsed.locked.find(x => x.key === 'region')?.value || '';
+  const fixedRegion = regionOverride || parsed.locked.find(x => x.key === 'region')?.value || '';
   const regionBank = BANK_REGION[fixedRegion];
   return (regionBank && regionBank[key]) || (outdoor && BANK_OUTDOOR[key]) || BANK[key] || null;
 }
@@ -789,16 +789,16 @@ export function readVideoDims(task, index = 0) {
 /* 第 i 条定向变体的维度取值：基准条的取值原样端过来，只有 varyKeys 里的重新取。
    用户当初写死的维度也允许被点名（他看完片改主意了），这时基准条里没有这一项，
    现场从库里补一条进去，并由 buildScript 的 varyKeys 让它盖过 locked 值。 */
-export function fanoutDims(parsed, baseDims, varyKeys, i) {
+export function fanoutDims(parsed, baseDims, varyKeys, i, regionOverride = '') {
   const vary = new Set(varyKeys);
   const out = baseDims.map(d => {
-    const bank = vary.has(d.key) && bankFor(parsed, d.key);
+    const bank = vary.has(d.key) && bankFor(parsed, d.key, regionOverride);
     return bank ? { ...d, value: bank[i % bank.length] } : d;
   });
   const have = new Set(baseDims.map(d => d.key));
   for (const k of varyKeys) {
     if (have.has(k)) continue;
-    const bank = bankFor(parsed, k);
+    const bank = bankFor(parsed, k, regionOverride);
     if (!bank) continue;
     out.push({ key: k, label: DIM[k].label, value: bank[i % bank.length], kind: 'open' });
   }
@@ -818,7 +818,19 @@ const fanMark = (s) => `<em class="sb-fan">${esc(s)}</em>`;
 const assetChip = (img, i) =>
   `<span class="sb-tok sb-tok--locked" contenteditable="false"><img src="${img}" alt="">@参考图${i + 1}</span>`;
 
-export function buildScript(parsed, dims, index, steer = '', images = [], total = 1, varyKeys = null) {
+const REGION_LABELS = {
+  br: '巴西', co: '哥伦比亚', mx: '墨西哥', us: '美国', jp: '日本',
+  kr: '韩国', id: '印度尼西亚', th: '泰国', in: '印度',
+};
+const REGION_BANK_KEYS = { id: '印尼' };
+const REGION_LANGUAGES = {
+  巴西: '葡萄牙语', 哥伦比亚: '西班牙语', 墨西哥: '西班牙语', 美国: '英语',
+  日本: '日语', 韩国: '韩语', 印度尼西亚: '印尼语', 印尼: '印尼语', 泰国: '泰语', 印度: '印地语',
+};
+const regionLabel = value => REGION_LABELS[value] || String(value || '');
+const regionBankKey = value => REGION_BANK_KEYS[value] || regionLabel(value);
+
+export function buildScript(parsed, dims, index, steer = '', images = [], total = 1, varyKeys = null, regionOverride = '') {
   const byKey = (k) => parsed.locked.filter(x => x.key === k);
   /* 定向裂变点名了的维度，即使用户当初写死过也让位给本条取值——
      他是看完成片才改的主意，新指令比旧输入新鲜。挡在 one() 这一个口子上，
@@ -829,8 +841,8 @@ export function buildScript(parsed, dims, index, steer = '', images = [], total 
   const out = [];
 
   const product = one('product') || one('brand');
-  const region = one('region');
-  const language = one('language');
+  const region = regionOverride || one('region');
+  const language = regionOverride ? (REGION_LANGUAGES[regionOverride] || one('language')) : one('language');
   const duration = one('duration');
   const head = [
     product ? `为${lockMark(product)}` : '为该产品',
@@ -1012,11 +1024,19 @@ export function buildVariantScripts(sourceText, imageUrls = [], magic = 'auto', 
 
 /* 定向裂变的 N 条脚本。跟 buildVariantScripts 的区别只有一个：
    取值不是从零抽，而是拿基准条的那一组，只把 varyKeys 换掉。 */
-export function buildFanoutScripts({ sourceText, imageUrls = [], baseDims = [], varyKeys = [], steer = '', count = 1 }) {
+export function buildFanoutScripts({ sourceText, imageUrls = [], baseDims = [], varyKeys = [], steer = '', count = 1, regions = [] }) {
   const parsed = parseBrief(sourceText || '');
-  const n = Math.max(1, count);
-  return Array.from({ length: n }, (_, i) => {
-    const dims = fanoutDims(parsed, baseDims, varyKeys, i);
-    return { promptHtml: buildScript(parsed, dims, i, steer, imageUrls, n, varyKeys), dims };
-  });
+  const n = Math.min(4, Math.max(1, count));
+  const targets = (Array.isArray(regions) && regions.length ? regions : [null]);
+  const total = n * targets.length;
+  return targets.flatMap(target => Array.from({ length: n }, (_, i) => {
+    const value = target && typeof target === 'object' ? (target.value || target.label) : target;
+    const label = regionLabel(value);
+    const dims = fanoutDims(parsed, baseDims, varyKeys, i, regionBankKey(value));
+    return {
+      promptHtml: buildScript(parsed, dims, i, steer, imageUrls, total, varyKeys, label),
+      dims,
+      region: value || null,
+    };
+  }));
 }

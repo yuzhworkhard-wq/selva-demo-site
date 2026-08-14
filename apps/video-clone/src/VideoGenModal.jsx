@@ -14,7 +14,7 @@ import {
 
 /* ── 输入卡控件选项（视频生成语义，全部真下拉）── */
 const ASPECTS = ['9:16', '1:1', '16:9'];
-const COUNT_MAX = 8;
+const COUNT_MAX = 4;
 
 const toRefItems = (list) => (list || []).map(x => (typeof x === 'string' ? { url: x, name: '' } : x));
 // 选择器里那排能力标签：时长 + 各类素材上限 + 提示词字数，一行看完这一档能干什么
@@ -580,7 +580,7 @@ export function VideoGenModal({
     const ds = modelCfg(VIDEO_MODEL_CONFIG[initialModel] ? initialModel : DEFAULT_MODEL).durations;
     return ds.includes(initialDuration) ? initialDuration : ds[0];
   });
-  const [count, setCount] = useState(initialCount || 4);
+  const [count, setCount] = useState(() => Math.min(COUNT_MAX, Math.max(1, initialCount || 4)));
   const [magic, setMagic] = useState(initialMagic || 'auto');   // Magic Prompt：auto | on | off
   /* 输入框是非受控的 contenteditable（受控会毁光标）。只有「外部把文字塞回去」时
      才需要重写它的 DOM——把这些时刻记成一个计数，用户自己打字时一次都不碰。 */

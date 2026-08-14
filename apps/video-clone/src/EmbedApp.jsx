@@ -5,6 +5,7 @@ import { VideoFanoutModal } from './VideoFanoutModal';
 import { CloneTaskDetail } from './CloneTaskDetail';
 import { VideoGenTaskDetail } from './VideoGenTaskDetail';
 import { buildFanoutScripts, buildVariantScripts, readVideoDims, FANOUT_DIMS } from './briefParser';
+import { normalizeRegions } from './videoRegionConfig.mjs';
 import './styles.css';
 
 /* 嵌入模式（?embed）：宿主平台用 iframe 承载克隆功能（工具箱入口＝克隆流程，任务中心入口＝任务详情）。
@@ -90,6 +91,7 @@ function fillSeedScripts(task, byId = {}, seen = new Set()) {
     const base = baseSeed ? fillSeedScripts(baseSeed, byId, new Set([...seen, task.id])) : null;
     const baseIndex = from.baseIndex || 0;
     const varyKeys = from.varyKeys || [];
+    const regions = from.regions || task.regions || [];
     /* readVideoDims 自己判断读不读得出：基准批 magic=off 时 dims 为空，
        自动档的共享补全批次则是 N 条 dims 相同；两种情况都从画面反解基准。 */
     const baseDims = base ? readVideoDims(base, baseIndex) : [];
@@ -98,7 +100,8 @@ function fillSeedScripts(task, byId = {}, seen = new Set()) {
       imageUrls: task.images || [],
       baseDims, varyKeys,
       steer: from.steer || '',
-      count: variants.length,
+      count: from.count || Math.min(4, variants.length),
+      regions,
     });
     return {
       ...task,
@@ -111,6 +114,7 @@ function fillSeedScripts(task, byId = {}, seen = new Set()) {
         steer: from.steer || '',
         dimLabels: varyKeys.map(k => (FANOUT_DIMS.find(d => d.key === k) || {}).label).filter(Boolean),
         readBase: !!from.readBase,
+        regions: regions.length ? normalizeRegions(regions) : [],
       },
       variants: variants.map((v, i) => ({ ...scripts[i], ...v })),
     };
@@ -175,6 +179,7 @@ export default function EmbedApp() {
       outDuration: p.outDuration || null,   // 出片时长(5s/10s)，与下面的任务耗时同名会被覆盖，必须分开
       magic: p.magic || null,             // Magic Prompt 档位，也是废片归因时的一条线索
       region: p.region,
+      regions: p.regions || null,
       status: 'generating',
       cloneUrl: null,
       duration: '—',
@@ -227,7 +232,7 @@ export default function EmbedApp() {
           ? (isFanout ? `视频裂变 · ${picked.length} 条` : `视频生成 · ${picked.length} 条`)
           : (isFanout ? '视频裂变' : '视频生成'))
         : task.name,
-      region: task.region, toolName: task.toolName, fanoutFrom: task.fanoutFrom,
+      region: task.region, regions: task.regions, toolName: task.toolName, fanoutFrom: task.fanoutFrom,
     });
   };
 
@@ -236,7 +241,7 @@ export default function EmbedApp() {
      出参里画幅沿用基准条不给改（改了就跟它不可比），时长可能被新模型带走，
      面板上已经把这件事说破了，这里照面板算出来的值走。 */
   const fanout = (task, {
-    baseIndex, steer, varyKeys, model, count, duration, baseDims, readBase, preset,
+    baseIndex, steer, varyKeys, model, count, regions: requestedRegions, duration, baseDims, readBase, preset,
     images, refVideos, refAudios,
   }) => {
     const base = task.variants && task.variants[baseIndex];
@@ -245,11 +250,13 @@ export default function EmbedApp() {
     const dims = (baseDims && baseDims.length) ? baseDims : (base.dims || []);
     // 裂变时新挂的参考素材接着原任务那批一起进提示词（用户常拿一张脸/一个场景来指着说）
     const imgs = [...(task.images || []), ...(images || [])];
+    const regions = normalizeRegions(requestedRegions || task.regions || task.fanoutFrom?.regions);
+    const perRegionCount = Math.min(4, Math.max(1, count || 4));
     const list = buildFanoutScripts({
       sourceText: task.sourceText || '',
       imageUrls: imgs,
       baseDims: dims,
-      varyKeys, steer, count,
+      varyKeys, steer, count: perRegionCount, regions,
     });
     const dimLabels = varyKeys.map(k => (dims.find(d => d.key === k) || {}).label
       || (FANOUT_DIMS.find(d => d.key === k) || {}).label).filter(Boolean);
@@ -263,8 +270,8 @@ export default function EmbedApp() {
       refVideos: [...(task.refVideos || []), ...(refVideos || [])],
       refAudios: [...(task.refAudios || []), ...(refAudios || [])],
       model, aspect: task.aspect, outDuration: duration, magic: preset ? 'auto' : null,
-      name: `${task.toolName === '视频裂变' ? '视频裂变 ·' : '视频生成 · 裂变'} ${count} 条`,
-      region: task.region, toolName: task.toolName,
+      name: `${task.toolName === '视频裂变' ? '视频裂变 ·' : '视频生成 · 裂变'} ${list.length} 条`,
+      region: task.region, regions, toolName: task.toolName,
       // 新任务详情里的来路：没有这个，「你的输入」跟成片就对不上号了。
       // readBase 记下基准是反解来的——它不是用户写的，来源得说清楚。
       // 这条路径的基准必是某条任务的变体，所以带 taskId；
@@ -272,7 +279,7 @@ export default function EmbedApp() {
       // 详情页对两种形状都认（fromTaskId 有无决定「来源任务」那行出不出）
       fanoutFrom: {
         taskId: task.id, baseIndex, steer, dimLabels, readBase: !!readBase,
-        varyKeys, preset: preset || null,
+        varyKeys, preset: preset || null, regions, count: perRegionCount,
       },
     });
   };
@@ -292,9 +299,10 @@ export default function EmbedApp() {
       sourceText: task.sourceText || '',
       images: task.images || [],
       refVideos: task.refVideos || [], refAudios: task.refAudios || [],
-      count: (task.variants && task.variants.length) || 1,
+      count: task.fanoutFrom?.count || Math.min(4, (task.variants && task.variants.length) || 1),
       model: task.model, aspect: task.aspect, outDuration: task.outDuration, magic: task.magic,
       fanoutFrom: task.fanoutFrom,
+      regions: task.regions,
       seq: (editSeed ? editSeed.seq : 0) + 1,
     });
     setView('flow');
@@ -384,6 +392,7 @@ export default function EmbedApp() {
               images: editSeed.images,
               refVideos: editSeed.refVideos,
               refAudios: editSeed.refAudios,
+              regions: editSeed.regions || editSeed.fanoutFrom?.regions,
             } : null}
           />
         ) : (

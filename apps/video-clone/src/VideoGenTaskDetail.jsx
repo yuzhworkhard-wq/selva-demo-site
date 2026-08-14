@@ -6,6 +6,7 @@ import {
 import { notifyHostModal } from './hostModal';
 import { FanoutDialog } from './FanoutDialog';
 import { modelLabel } from './videoModelConfig.mjs';
+import { VIDEO_REGIONS } from './videoRegionConfig.mjs';
 
 // 老任务（这版之前提交的）没有逐条状态，按全成功处理
 const FALLBACK_FAIL = { code: 'E5000', reason: '模型未返回结果。', fix: '直接重新生成即可。' };
@@ -224,12 +225,23 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
      第三项＝这行值可不可复制：ID 类的值是拿去别处对号的（任务中心搜、跟研发报问题），
      只让人肉眼抄一遍等于没给。 */
   const displayModel = modelLabel(task.model);
+  const targetRegions = Array.isArray(task.regions) && task.regions.length
+    ? task.regions
+    : (Array.isArray(task.fanoutFrom?.regions) && task.fanoutFrom.regions.length
+      ? task.fanoutFrom.regions
+      : (task.region ? [task.region] : []));
+  const regionName = value => {
+    const raw = typeof value === 'object' ? value.value : value;
+    const hit = VIDEO_REGIONS.find(region => region.value === raw);
+    return hit ? hit.label : (typeof value === 'object' ? value.label : String(value));
+  };
   const params = [
     ['任务 ID', task.id, 'self'],
     ['工具名称', task.toolName],
     ['视频模型', displayModel],
     ['视频时长', task.outDuration],
     ['画面比例', task.aspect],
+    ['目标地区', targetRegions],
     // 参考图在下面有缩略图可看，视频/音频只报个数（模型不同能挂的种类也不同）
     ['参考视频', (task.refVideos || []).length ? `${task.refVideos.length} 个` : ''],
     ['参考音频', (task.refAudios || []).length ? `${task.refAudios.length} 个` : ''],
@@ -280,7 +292,8 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
   function doFanout(payload) {
     setFanoutOpen(false);
     onFanout(payload);
-    showToast(`已按你的方向提交裂变任务（${payload.count} 条）`);
+    const total = (payload.regions?.length || 1) * (payload.count || 4);
+    showToast(`已按你的方向提交裂变任务（${total} 条）`);
   }
 
   function copySource() {
@@ -595,6 +608,10 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
                             {value}
                             {idCopied === copyKey ? <Check size={11} strokeWidth={2} /> : <Copy size={11} strokeWidth={1.9} />}
                           </button>
+                        ) : Array.isArray(value) ? (
+                          <span className="vtd-meta-v vtd-region-chips">
+                            {value.map(region => <span className="vtd-region-chip" key={typeof region === 'object' ? region.value : region}>{regionName(region)}</span>)}
+                          </span>
                         ) : (
                           <span className="vtd-meta-v">{value}</span>
                         )}
