@@ -5695,6 +5695,7 @@ body {
   width: min(420px, calc(100vw - 48px)); padding: 5px;
   background: var(--bg-elevated); border: 1px solid var(--border-light);
   border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+  max-height: min(320px, calc(100vh - 120px)); overflow-y: auto;
 }
 .region-select-option {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;

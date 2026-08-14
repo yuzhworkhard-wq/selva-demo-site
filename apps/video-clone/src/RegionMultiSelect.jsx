@@ -61,7 +61,7 @@ export function RegionMultiSelect({ value, onChange, max = Infinity }) {
               <button type="button" role="option" aria-selected={selected} key={region.value}
                 className={`region-select-option ${selected ? 'selected' : ''}`} disabled={disabled}
                 onClick={() => toggle(region)}>
-                <span><b>{region.label}</b><small>{region.locale} · {region.language}</small></span>
+                <span><b>{region.label}</b><small>{region.value.toUpperCase()}</small></span>
                 {selected && <Check size={14} />}
               </button>
             );
