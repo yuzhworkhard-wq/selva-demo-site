@@ -53,6 +53,11 @@ check(!dialog.includes('{modal && <button className="icon-btn"'), '裂变核心 
 check(dialog.includes('onRefsHandedOff'), '共享面板支持把本地参考素材移交给任务');
 check(dialog.includes('refsHandedOffRef.current = true'), '提交后不释放已经移交的本地参考素材 URL');
 check(dialog.includes('initialValues'), '共享面板可恢复已保存的裂变设置');
+check(!dialog.includes('readOnly={!!preset}'), '自动裂变仍允许输入补充产品信息');
+check(!dialog.includes('disabled={!!preset}'), '自动裂变仍允许添加参考素材');
+check(dialog.includes('fanoutPresetKeys(preset)') && dialog.includes('steerToDims(steer)'),
+  '自动档合并用户指令识别出的变化维度');
+check(!dialog.includes("if (value) setSteer('')"), '开启自动时保留用户已输入的补充信息');
 
 const toolbox = read('src/ToolboxPage.jsx');
 check(toolbox.includes('onStartVideoFanout'), 'React 工具箱暴露视频裂变入口');
@@ -76,6 +81,8 @@ check(taskDetail.includes("const scriptTab = !multi ? '扩写提示词' : sameSc
 const styles = read('src/styles.css');
 check(styles.includes('width: min(560px, calc(100vw - 24px))'), '模型菜单在窄屏限制为视口宽度');
 check(styles.includes('.fo-inline {'), '页内裂变输入卡贴在上传区，不走底部滑出弹层');
+const refCollapseCss = styles.match(/\.fo-ref-collapse\s*\{[^}]*\}/s)?.[0] || '';
+check(/overflow:\s*visible/.test(refCollapseCss), '裂变上传菜单可以越过加号容器显示');
 check(styles.includes('.step-content--with-extra .upload-panel {'), '已上传预览框按剩余高度伸缩');
 check(styles.includes('.upload-hero-right--locked'), '右栏不撑高外框，外框高度跟左侧海报走');
 check(clone.includes('upload-hero-right--locked'), '上传完成后右栏改为铺满锁定外框');

@@ -5765,23 +5765,14 @@ body {
 }
 .composer-input:read-only { cursor: text; opacity: .58; }
 
-/* 自动模式不需要输入指令：输入区域向下淡出并折叠，底栏同步上移。 */
+/* 自动档与用户补充信息共用同一输入区，保持输入卡的完整结构。 */
 .fo-steer-collapse {
   max-height: 160px; opacity: 1; overflow: hidden; transform: translateY(0);
   transition: max-height 220ms ease, opacity 160ms ease, transform 220ms ease;
 }
-.fo-steer-collapse.is-collapsed {
-  max-height: 0; opacity: 0; transform: translateY(10px); pointer-events: none;
-}
 .fo-ref-collapse {
-  display: inline-flex; width: 32px; opacity: 1; overflow: hidden; transform: translateY(0);
+  display: inline-flex; width: 32px; opacity: 1; overflow: visible; transform: translateY(0);
   transition: width 220ms ease, opacity 160ms ease, transform 220ms ease;
-}
-.fo-ref-collapse.is-collapsed {
-  width: 0; opacity: 0; transform: translateY(10px); pointer-events: none;
-}
-.composer--fanout-auto .composer-bar {
-  margin-top: 0; padding-top: 0; border-top-color: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {

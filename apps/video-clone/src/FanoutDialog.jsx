@@ -152,16 +152,14 @@ export function FanoutPanel({
   const refs = { image: refImages, video: refVideos, audio: refAudios };
   const setRefs = { image: setRefImages, video: setRefVideos, audio: setRefAudios };
 
-  const varyKeys = useMemo(
-    () => preset ? fanoutPresetKeys(preset) : steerToDims(steer).map(d => d.key),
-    [preset, steer],
-  );
+  const varyKeys = useMemo(() => {
+    const automatic = preset ? fanoutPresetKeys(preset) : [];
+    const requested = steerToDims(steer).map(d => d.key);
+    return [...new Set([...automatic, ...requested])];
+  }, [preset, steer]);
 
-  const clearPresetForInput = () => { if (preset) setPreset(null); };
-  const setPresetMode = value => {
-    setPreset(value);
-    if (value) setSteer('');
-  };
+  // 自动档负责补齐变化维度，用户输入负责补充产品信息或额外方向，两者可以同时生效。
+  const setPresetMode = value => setPreset(value);
 
   // 任务详情弹窗需要同步宿主遮罩；整页视频裂变流程由页面外壳管理遮罩。
   useEffect(() => {
@@ -265,7 +263,7 @@ export function FanoutPanel({
           <div className="region-select-hint">每地区最多 4 条 · 共 {regions.length * count} 条</div>
         </div>
 
-        <div className={`composer composer--fanout ${preset ? 'composer--fanout-auto' : ''}`}>
+        <div className="composer composer--fanout">
           {/* 挂上来的参考素材：跟第一步那张输入卡同一种 chip */}
           {refCount > 0 && (
             <div className="idea-dock">
@@ -292,11 +290,9 @@ export function FanoutPanel({
             </div>
           )}
 
-          <div className={`fo-steer-collapse ${preset ? 'is-collapsed' : ''}`} aria-hidden={!!preset}>
+          <div className="fo-steer-collapse">
             <AutoTextarea
-              value={steer} onFocus={clearPresetForInput}
-              onChange={value => { clearPresetForInput(); setSteer(value); }} onSubmit={submit}
-              readOnly={!!preset} tabIndex={preset ? -1 : 0}
+              value={steer} onChange={setSteer} onSubmit={submit}
               minRows={2} maxHeight={140} maxLength={200}
               placeholder={reading ? '正在分析画面…' : '想怎么变？比如：换成这张脸、场景挪到户外'}
             />
@@ -311,9 +307,9 @@ export function FanoutPanel({
 
           <div className="composer-bar">
             <div className="composer-bar-left">
-              <span className={`fo-ref-collapse ${preset ? 'is-collapsed' : ''}`} aria-hidden={!!preset}>
+              <span className="fo-ref-collapse">
                 <AddRefButton
-                  model={model} refs={refs} disabled={!!preset}
+                  model={model} refs={refs}
                   onAddFiles={addLocalFiles} onOpenLibrary={() => setLibOpen(true)}
                 />
               </span>
