@@ -39,6 +39,17 @@ let dcPage = 1;
 const DC_PAGE_SIZE = 8;
 let assetsCenterPage = 1;
 const ASSETS_CENTER_PAGE_SIZE = 8;
+let viralLibFilter = {
+  channel: '全部',
+  country: '全部国家/地区',
+  language: '全部文案语言',
+  attr: '全部素材属性',
+  quick: '',
+  range: '30天',
+  sort: '最新创意',
+  viewMode: '广告',
+  layout: 'grid',
+};
 function setTaskPage(p) {
   const n = Number(p);
   if (!Number.isFinite(n) || n < 1) return;

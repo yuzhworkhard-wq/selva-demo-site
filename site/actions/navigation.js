@@ -15,6 +15,7 @@ function goPage(page) {
   if (page === 'library') renderLibrary();
   if (page === 'tasks') renderTaskCenter();
   if (page === 'assets-center') renderAssetsCenter();
+  if (page === 'viral-library') renderViralLibrary();
   if (page === 'settings') renderSettingsPage();
   if (page === 'stats') renderStatsPage();
   if (page === 'effects') renderDataCenterPage();
