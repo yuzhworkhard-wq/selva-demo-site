@@ -3590,6 +3590,13 @@ function renderAssetsCenter() {
   `;
 }
 
+// ===== 爆款视频库（左侧菜单）：iframe 承载和视频生成里同一套筛选页 =====
+function renderViralLibrary() {
+  const container = document.getElementById('viral-library-content');
+  if (!container) return;
+  container.innerHTML = '<iframe class="viral-lib-frame" title="爆款视频库" src="clone/index.html?viral=1"></iframe>';
+}
+
 // ===== Settings Page =====
 let settingsSection = 'profile';
 

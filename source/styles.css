@@ -2193,3 +2193,10 @@
 
   /* ===== 视频克隆弹窗全局化：子应用弹窗打开时，侧栏叠同款半透明遮罩（iframe 内遮罩只盖内容区） ===== */
   .clone-sidebar-scrim { position: fixed; left: 0; top: 0; bottom: 0; width: 240px; z-index: 500; background: rgba(0, 0, 0, 0.55); }
+
+  /* ===== 爆款视频库：菜单页铺满主栏，滚动发生在 iframe 里的整页文档流 ===== */
+  .main:has(#page-viral-library.active) { overflow: hidden; display: flex; flex-direction: column; }
+  #page-viral-library { padding: 0; height: 100%; overflow: hidden; }
+  #page-viral-library.active { display: flex; flex-direction: column; }
+  #viral-library-content { flex: 1; min-height: 0; }
+  .viral-lib-frame { display: block; width: 100%; height: 100%; border: 0; background: #0a0b0b; }
