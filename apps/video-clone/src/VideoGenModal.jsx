@@ -1326,23 +1326,23 @@ function ShowcaseLibrary({ initialTag = '全部', onUse, onClose }) {
         </div>
       </div>
 
-      <div className="lib-filters">
-        <div className="lib-sort">
-          <button type="button" className={`lib-sort-btn ${sort === 'heat' ? 'active' : ''}`} onClick={() => setSort('heat')}>
-            <Flame size={12} strokeWidth={2} /> 热度
-          </button>
-          <button type="button" className={`lib-sort-btn ${sort === 'new' ? 'active' : ''}`} onClick={() => setSort('new')}>
-            <Clock size={12} strokeWidth={2} /> 最新
-          </button>
-        </div>
-        <div className="lib-tagrow">
-          {HOT_TAGS.map(t => (
-            <button key={t} type="button" className={`hot-tag ${t === tag ? 'active' : ''}`} onClick={() => setTag(t)}>{t}</button>
-          ))}
-        </div>
-      </div>
-
       <div className="lib-body">
+        <div className="lib-filters">
+          <div className="lib-sort">
+            <button type="button" className={`lib-sort-btn ${sort === 'heat' ? 'active' : ''}`} onClick={() => setSort('heat')}>
+              <Flame size={12} strokeWidth={2} /> 热度
+            </button>
+            <button type="button" className={`lib-sort-btn ${sort === 'new' ? 'active' : ''}`} onClick={() => setSort('new')}>
+              <Clock size={12} strokeWidth={2} /> 最新
+            </button>
+          </div>
+          <div className="lib-tagrow">
+            {HOT_TAGS.map(t => (
+              <button key={t} type="button" className={`hot-tag ${t === tag ? 'active' : ''}`} onClick={() => setTag(t)}>{t}</button>
+            ))}
+          </div>
+        </div>
+
         {list.length === 0
           ? <div className="lib-empty">没有匹配的素材，换个词或分类试试</div>
           : <div className="hot-grid hot-grid--dense">
