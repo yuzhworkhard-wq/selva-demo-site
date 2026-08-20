@@ -16,22 +16,18 @@ test('left nav includes 爆款视频库 as its own page', () => {
   assert.match(html, /id="viral-library-content"/);
 });
 
-test('viral library filters stay in document flow instead of sticking', () => {
-  const css = fs.readFileSync(path.join(siteRoot, 'styles.css'), 'utf8');
-  const start = css.indexOf('.vl-filters');
-  assert.ok(start >= 0, 'expected .vl-filters styles');
-  const block = css.slice(start, start + 280);
-  assert.match(block, /position:\s*static/);
-  assert.doesNotMatch(block, /position:\s*(sticky|fixed)/);
-});
-
-test('viral library render puts filters and cards in the same page', () => {
+test('menu 爆款视频库 loads the same viral library page', () => {
   const app = loadApp();
   app.eval('renderViralLibrary()');
   const html = app.eval("document.getElementById('viral-library-content').innerHTML");
-  assert.match(html, /class="vl-filters"/);
-  assert.match(html, /渠道/);
-  assert.match(html, /class="vl-grid"/);
-  assert.match(html, /人气值/);
-  assert.doesNotMatch(html, /position:\s*sticky/);
+  assert.match(html, /clone\/index\.html\?viral=1/);
+  assert.match(html, /viral-lib-frame/);
+});
+
+test('viral library CSS keeps filters in document flow', () => {
+  const css = fs.readFileSync(path.join(siteRoot, '..', 'apps/video-clone/src/styles.css'), 'utf8');
+  assert.match(css, /\.clone-main--library/);
+  const libPage = css.slice(css.indexOf('.lib-page {'), css.indexOf('.lib-page {') + 280);
+  assert.match(libPage, /overflow:\s*visible/);
+  assert.doesNotMatch(libPage, /position:\s*(sticky|fixed)/);
 });
