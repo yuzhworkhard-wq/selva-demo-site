@@ -7,7 +7,7 @@
     "build": "vite build && npm run sync",
     "sync": "rsync -a --delete ../../site/clone/ ../../source/clone/",
     "preview": "vite preview",
-    "test": "node smoke-video-model-config.mjs && node smoke-fanout.mjs && node smoke-video-fanout.mjs"
+    "test": "node smoke-video-model-config.mjs && node smoke-fanout.mjs && node smoke-video-fanout.mjs && node smoke-viral-library.mjs"
   },
   "keywords": [],
   "author": "",

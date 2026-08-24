@@ -24,6 +24,10 @@
   .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; color: #999; transition: all .15s; }
   .nav-item:hover { background: #1a1a2e; color: #e0e0e0; }
   .nav-item.active { background: #7c3aed22; color: #a78bfa; border-left: 3px solid #7c3aed; }
+  .nav-item-button { width: 100%; min-height: 43px; border: 0; background: transparent; font-family: inherit; font-size: 14px; font-weight: 400; line-height: normal; text-align: left; }
+  .nav-item-button:focus-visible { outline: 2px solid #7676ff; outline-offset: 2px; }
+  .nav-item-icon { flex: 0 0 17px; }
+  .nav-item[data-page="viral-library"].active { background: #6161ff24; color: #7676ff; border-left-color: #6161ff; }
   .nav-item .badge { margin-left: auto; background: #7c3aed; color: #fff; font-size: 11px; padding: 2px 7px; border-radius: 10px; }
 
   .sidebar-bottom { margin-top: auto; padding: 16px; border-top: 1px solid #1e1e2e; background: #12121a; position: sticky; bottom: 0; }

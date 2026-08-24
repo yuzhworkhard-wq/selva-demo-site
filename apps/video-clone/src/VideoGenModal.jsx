@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
-  X, ChevronRight, ChevronDown, ChevronUp, Loader2, Check, Clock,
+  X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Loader2, Check, Clock,
   ArrowLeft, ArrowUp, Plus, Film, Clapperboard, Music, Lock, AlertCircle,
-  LayoutGrid, Copy, Settings, Wand2, Flame, Search, Share2,
-  Upload, FolderOpen, UserRound, Image as ImageIcon,
+  LayoutGrid, List, Copy, GitBranch, Settings, Wand2, Search, Calendar, DollarSign, Download, Play,
+  Upload, FolderOpen, UserRound, Image as ImageIcon, Bookmark,
 } from 'lucide-react';
 import { notifyHostModal } from './hostModal';
 import { buildVariantScripts } from './briefParser';
@@ -11,6 +11,14 @@ import {
   VIDEO_MODEL_CONFIG, MODEL_FAMILIES, DEFAULT_MODEL, modelCfg, modelLabel, familyOf,
   REF_KINDS, kindLabel, kindOfFile,
 } from './videoModelConfig.mjs';
+import {
+  INDUSTRIES, SOURCES, VIDEO_TYPES, DURATION_BANDS, SIZES, CREATED_BANDS, CREATED_SEGMENT_LABELS,
+  CAL_WEEKDAYS, formatSpend, deriveTodaySpend, formatUploadDate,
+  filterLibrary, sortLibrary, filterFavorites, loadFavoriteIds, saveFavoriteIds, toggleFavoriteId,
+  toIsoDate, parseIsoDate, monthGrid,
+} from './viralLibrary.mjs';
+import { regionLabelByIndex } from './videoRegionConfig.mjs';
+import { LibraryRegionPicker } from './RegionPickerPanel';
 
 /* ── 输入卡控件选项（视频生成语义，全部真下拉）── */
 const ASPECTS = ['9:16', '1:1', '16:9'];
@@ -105,52 +113,146 @@ const MAGIC_OPTIONS = [
 ];
 const MAGIC_LABEL = { auto: '自动', on: '开', off: '关' };
 
-/* ── 爆款视频库：按热度排序的投放素材库。热度＝近 7 日被采用次数（demo 写死），
-   点卡片＝把这条的提示词灌进输入框直接开裂变。── */
-const HOT_TAGS = ['全部', '口播带货', '网赚短剧', '开箱测评', '产品特写', '街头采访', '宠物萌宠', '美妆个护', '游戏推广', 'UGC 素人', '电影质感'];
-
-const SHOWCASE = [
-  { id: 'sc-01', heat: 68, tag: '口播带货', cover: 'showcase/sarah.jpg', title: '素人沙发口播 · 开箱式带货', src: 'TikTok', days: 11,
-    prompt: '年轻女生坐在暖色调客厅沙发上对镜头口播，手里拿着产品边说边展示，语气像跟朋友分享，自然手持拍摄感，9:16 竖屏。' },
-  { id: 'sc-02', heat: 64, tag: '网赚短剧', cover: 'frames/frame_01.jpg', title: '街边 ATM · 到账实拍', src: 'Kwai', days: 26,
-    prompt: '街边 ATM 前，年轻女子手持手机面对镜头，介绍看短剧赚钱的 App，说「看一集就能到账」，真实手持拍摄感。' },
-  { id: 'sc-03', heat: 61, tag: '开箱测评', cover: 'showcase/jonas.jpg', title: '桌面开箱 · 硬核测评口吻', src: 'YouTube', days: 6,
-    prompt: '男主播在布置精致的书桌前开箱产品，双手拿起展示细节，语气专业冷静像测评，暖光台灯 + 背景虚化。' },
-  { id: 'sc-04', heat: 57, tag: '游戏推广', cover: 'frames/frame_09.jpg', title: '客厅口播 · 手游安利', src: 'TikTok', days: 19,
-    prompt: '日本美女在明亮客厅对镜头介绍一款麻将手游，手持手机展示界面，语气亲切自然，9:16 竖屏真实质感。' },
-  { id: 'sc-05', heat: 55, tag: '美妆个护', cover: 'showcase/chloe.jpg', title: '阳台自然光 · 护肤安利', src: 'Instagram', days: 2,
-    prompt: '女生在阳台自然光下手持护肤瓶对镜头讲使用感受，画面通透干净，中景带手势特写产品，清新日系调色。' },
-  { id: 'sc-06', heat: 52, tag: '产品特写', cover: 'frames/frame_04.jpg', title: '手机屏特写 · 收益结算', src: 'AdFlow', days: 31,
-    prompt: '手机屏幕特写，展示 App 的收益结算界面，金额档位 R$2/4/6/10 依次点过，数字清晰醒目。' },
-  { id: 'sc-07', heat: 50, tag: 'UGC 素人', cover: 'showcase/mei.jpg', title: '厨房随手拍 · 生活流', src: 'TikTok', days: 9,
-    prompt: '素人女生在厨房一边做事一边扭头对镜头讲产品体验，画面略带手持晃动，生活化不精致，像随手拍的真实分享。' },
-  { id: 'sc-08', heat: 49, tag: '街头采访', cover: 'showcase/diego.jpg', title: '街头拦访 · 路人反应', src: 'Kwai', days: 14,
-    prompt: '街头拦住路人做采访，路人对着镜头惊讶地说出使用感受，背景是热闹的商业街，手持跟拍纪实感。' },
-  { id: 'sc-09', heat: 47, tag: '电影质感', cover: 'showcase/victor.jpg', title: '夜色霓虹 · 高级感开场', src: 'AdFlow', days: 4,
-    prompt: '夜晚霓虹街头，男主角侧身走向镜头，冷调蓝紫光影，浅景深电影质感，镜头缓慢前推。' },
-  { id: 'sc-10', heat: 45, tag: '宠物萌宠', cover: 'frames/frame_08.jpg', title: '柴犬动效 · 片头素材', src: 'Instagram', days: 23,
-    prompt: '让这只柴犬做几个可爱动作当片头：原地坐正、歪头、伸出前爪，镜头固定，背景保持不变。' },
-  { id: 'sc-11', heat: 44, tag: '口播带货', cover: 'showcase/priya.jpg', title: '窗边中景 · 亲和讲解', src: 'TikTok', days: 17,
-    prompt: '女主播在窗边柔光下中景口播，双手自然比划讲解卖点，暖色调亲和氛围，节奏舒缓。' },
-  { id: 'sc-12', heat: 42, tag: '美妆个护', cover: 'showcase/zoe.jpg', title: '镜前上妆 · 边化边讲', src: 'Instagram', days: 1,
-    prompt: '女生在化妆镜前一边上妆一边对镜头讲产品，镜面反射补光，特写与半身景交替，精致质感。' },
-  { id: 'sc-13', heat: 40, tag: 'UGC 素人', cover: 'showcase/owen.jpg', title: '车里自拍 · 通勤口播', src: 'YouTube', days: 8,
-    prompt: '男生坐在车里举着手机自拍视角讲产品，车窗外是流动的街景，光线自然，像通勤路上随手录的。' },
-  { id: 'sc-14', heat: 39, tag: '产品特写', cover: 'frames/frame_02.jpg', title: '居家场景 · 体验讲述', src: 'AdFlow', days: 29,
-    prompt: '温馨居家场景，模特在沙发上自然讲述产品体验，暖色调柔和光线，中景带手势互动。' },
-  { id: 'sc-15', heat: 38, tag: '开箱测评', cover: 'showcase/kai.jpg', title: '手持展示 · 参数对比', src: 'YouTube', days: 13,
-    prompt: '男生双手举起两款产品做对比，镜头在两者之间来回切，语速偏快信息密度高，冷白光棚拍感。' },
-  { id: 'sc-16', heat: 36, tag: '游戏推广', cover: 'showcase/freya.jpg', title: '沉浸开场 · 悬念钩子', src: 'TikTok', days: 3,
-    prompt: '女生凑近镜头压低声音抛出一个悬念问题，随后转身指向身后屏幕上的游戏画面，暗调布光带戏剧感。' },
-  { id: 'sc-17', heat: 35, tag: '网赚短剧', cover: 'showcase/elena.jpg', title: '到账截图 · 惊喜反应', src: 'Kwai', days: 21,
-    prompt: '女生看着手机屏幕露出惊喜表情，把到账页面举到镜头前，背景是普通居家环境，真实感优先。' },
-  { id: 'sc-18', heat: 33, tag: '街头采访', cover: 'showcase/omar.jpg', title: '门店门口 · 老板出镜', src: 'AdFlow', days: 7,
-    prompt: '店铺门口，老板双手抱胸对镜头讲自己怎么用这个工具省事，市井烟火气，自然光手持拍摄。' },
-  { id: 'sc-19', heat: 31, tag: '电影质感', cover: 'showcase/walter.jpg', title: '硬光棚拍 · 质感特写', src: 'AdFlow', days: 16,
-    prompt: '棚拍硬光打在主体侧脸，高对比明暗交界，镜头极慢推近，无台词只有环境音，高级广告片质感。' },
-  { id: 'sc-20', heat: 28, tag: '宠物萌宠', cover: 'frames/frame_06.jpg', title: '萌宠陪伴 · 温情结尾', src: 'Instagram', days: 34,
-    prompt: '主人和宠物在地毯上互动，宠物凑近镜头，暖黄色调温情氛围，适合做片尾收束镜头。' },
+/* ── 爆款视频库：按热度排序的投放素材库。热度＝近 7 日被采用次数（demo 写死）。
+   视频生成第一步点卡片＝把提示词灌进输入框；一级菜单库页点卡片＝打开这条的预览详情。── */
+const DEMO_CLIP = 'test-clip.mp4';
+const LIBRARY_PAGE_SIZE = 60;
+const LIB_SORTS = [
+  { value: 'spend', label: '消耗' },
+  { value: 'new', label: '最新创建' },
+  { value: 'fav', label: '收藏夹' },
 ];
+
+function useViralFavorites() {
+  const [favoriteIds, setFavoriteIds] = useState(() => loadFavoriteIds());
+  const toggleFavorite = (id) => {
+    setFavoriteIds(prev => {
+      const next = toggleFavoriteId(prev, id);
+      saveFavoriteIds(next);
+      return next;
+    });
+  };
+  const isFavorited = (id) => favoriteIds.includes(id);
+  return { favoriteIds, toggleFavorite, isFavorited };
+}
+
+const SHOWCASE_SEEDS = [
+  { id: 'sc-01', product: 'mixreels', industry: '网赚', type: '原生', source: 'TikTok', spend: 42800, duration: 18, size: '9:16', days: 11, cover: 'showcase/sarah.jpg', title: '素人沙发口播 · 开箱式带货',
+    prompt: '年轻女生坐在暖色调客厅沙发上对镜头口播，手里拿着产品边说边展示，语气像跟朋友分享，自然手持拍摄感，9:16 竖屏。' },
+  { id: 'sc-02', product: 'CashDrama', industry: '网赚', type: '实拍', source: 'Kwai', spend: 31200, duration: 23, size: '9:16', days: 26, cover: 'frames/frame_01.jpg', title: '街边 ATM · 到账实拍',
+    prompt: '街边 ATM 前，年轻女子手持手机面对镜头，介绍看短剧赚钱的 App，说「看一集就能到账」，真实手持拍摄感。' },
+  { id: 'sc-03', product: 'UnboxKit', industry: '工具', type: '精剪', source: 'TikTok', spend: 18600, duration: 27, size: '9:16', days: 6, cover: 'showcase/jonas.jpg', title: '桌面开箱 · 硬核测评口吻',
+    prompt: '男主播在布置精致的书桌前开箱产品，双手拿起展示细节，语气专业冷静像测评，暖光台灯 + 背景虚化。' },
+  { id: 'sc-04', product: 'LuckyTile', industry: '游戏', type: '原生', source: 'TikTok', spend: 22100, duration: 15, size: '9:16', days: 19, cover: 'frames/frame_09.jpg', title: '客厅口播 · 手游安利',
+    prompt: '日本美女在明亮客厅对镜头介绍一款麻将手游，手持手机展示界面，语气亲切自然，9:16 竖屏真实质感。' },
+  { id: 'sc-05', product: 'GlowSkin', industry: '其他', type: '精剪', source: 'Kwai', spend: 9400, duration: 21, size: '9:16', days: 2, cover: 'showcase/chloe.jpg', title: '阳台自然光 · 护肤安利',
+    prompt: '女生在阳台自然光下手持护肤瓶对镜头讲使用感受，画面通透干净，中景带手势特写产品，清新日系调色。' },
+  { id: 'sc-06', product: 'PayClip', industry: '网赚', type: 'AI', source: 'TikTok', spend: 15700, duration: 12, size: '9:16', days: 31, cover: 'frames/frame_04.jpg', title: '手机屏特写 · 收益结算',
+    prompt: '手机屏幕特写，展示 App 的收益结算界面，金额档位 R$2/4/6/10 依次点过，数字清晰醒目。' },
+  { id: 'sc-07', product: 'ChatNow', industry: '社交', type: '原生', source: 'TikTok', spend: 12800, duration: 19, size: '9:16', days: 9, cover: 'showcase/mei.jpg', title: '厨房随手拍 · 生活流',
+    prompt: '素人女生在厨房一边做事一边扭头对镜头讲产品体验，画面略带手持晃动，生活化不精致，像随手拍的真实分享。' },
+  { id: 'sc-08', product: 'StreetAsk', industry: '社交', type: '实拍', source: 'Kwai', spend: 8700, duration: 24, size: '9:16', days: 14, cover: 'showcase/diego.jpg', title: '街头拦访 · 路人反应',
+    prompt: '街头拦住路人做采访，路人对着镜头惊讶地说出使用感受，背景是热闹的商业街，手持跟拍纪实感。' },
+  { id: 'sc-09', product: 'NightReel', industry: '互娱', type: '精剪', source: 'TikTok', spend: 25400, duration: 16, size: '9:16', days: 4, cover: 'showcase/victor.jpg', title: '夜色霓虹 · 高级感开场',
+    prompt: '夜晚霓虹街头，男主角侧身走向镜头，冷调蓝紫光影，浅景深电影质感，镜头缓慢前推。' },
+  { id: 'sc-10', product: 'PawClip', industry: '其他', type: 'AI', source: 'Kwai', spend: 6300, duration: 11, size: '9:16', days: 23, cover: 'frames/frame_08.jpg', title: '柴犬动效 · 片头素材',
+    prompt: '让这只柴犬做几个可爱动作当片头：原地坐正、歪头、伸出前爪，镜头固定，背景保持不变。' },
+  { id: 'sc-11', product: 'mixreels', industry: '工具', type: '混剪', source: 'TikTok', spend: 19200, duration: 20, size: '9:16', days: 17, cover: 'showcase/priya.jpg', title: '窗边中景 · 亲和讲解',
+    prompt: '女主播在窗边柔光下中景口播，双手自然比划讲解卖点，暖色调亲和氛围，节奏舒缓。' },
+  { id: 'sc-12', product: 'GlowSkin', industry: '其他', type: '原生', source: 'Kwai', spend: 14100, duration: 22, size: '9:16', days: 1, cover: 'showcase/zoe.jpg', title: '镜前上妆 · 边化边讲',
+    prompt: '女生在化妆镜前一边上妆一边对镜头讲产品，镜面反射补光，特写与半身景交替，精致质感。' },
+  { id: 'sc-13', product: 'ChatNow', industry: '社交', type: '实拍', source: 'TikTok', spend: 7600, duration: 18, size: '1:1', days: 8, cover: 'showcase/owen.jpg', title: '车里自拍 · 通勤口播',
+    prompt: '男生坐在车里举着手机自拍视角讲产品，车窗外是流动的街景，光线自然，像通勤路上随手录的。' },
+  { id: 'sc-14', product: 'PayClip', industry: '网赚', type: '混剪', source: 'Kwai', spend: 10300, duration: 25, size: '9:16', days: 29, cover: 'frames/frame_02.jpg', title: '居家场景 · 体验讲述',
+    prompt: '温馨居家场景，模特在沙发上自然讲述产品体验，暖色调柔和光线，中景带手势互动。' },
+  { id: 'sc-15', product: 'UnboxKit', industry: '工具', type: '精剪', source: 'TikTok', spend: 16800, duration: 28, size: '9:16', days: 13, cover: 'showcase/kai.jpg', title: '手持展示 · 参数对比',
+    prompt: '男生双手举起两款产品做对比，镜头在两者之间来回切，语速偏快信息密度高，冷白光棚拍感。' },
+  { id: 'sc-16', product: 'LuckyTile', industry: '游戏', type: 'AI', source: 'TikTok', spend: 54100, duration: 14, size: '9:16', days: 3, cover: 'showcase/freya.jpg', title: '沉浸开场 · 悬念钩子',
+    prompt: '女生凑近镜头压低声音抛出一个悬念问题，随后转身指向身后屏幕上的游戏画面，暗调布光带戏剧感。' },
+  { id: 'sc-17', product: 'CashDrama', industry: '网赚', type: '实拍', source: 'Kwai', spend: 28900, duration: 17, size: '9:16', days: 21, cover: 'showcase/elena.jpg', title: '到账截图 · 惊喜反应',
+    prompt: '女生看着手机屏幕露出惊喜表情，把到账页面举到镜头前，背景是普通居家环境，真实感优先。' },
+  { id: 'sc-18', product: 'StreetAsk', industry: '社交', type: '原生', source: 'Kwai', spend: 800, duration: 32, size: '16:9', days: 7, cover: 'showcase/omar.jpg', title: '门店门口 · 老板出镜',
+    prompt: '店铺门口，老板双手抱胸对镜头讲自己怎么用这个工具省事，市井烟火气，自然光手持拍摄。' },
+  { id: 'sc-19', product: 'NightReel', industry: '互娱', type: '精剪', source: 'TikTok', spend: 33400, duration: 15, size: '9:16', days: 16, cover: 'showcase/walter.jpg', title: '硬光棚拍 · 质感特写',
+    prompt: '棚拍硬光打在主体侧脸，高对比明暗交界，镜头极慢推近，无台词只有环境音，高级广告片质感。' },
+  { id: 'sc-20', product: 'PawClip', industry: '其他', type: '混剪', source: 'Kwai', spend: 4200, duration: 65, size: '9:16', days: 34, cover: 'frames/frame_06.jpg', title: '萌宠陪伴 · 温情结尾',
+    prompt: '主人和宠物在地毯上互动，宠物凑近镜头，暖黄色调温情氛围，适合做片尾收束镜头。' },
+  { id: 'sc-21', product: 'ReelCash', industry: '网赚', type: '原生', source: 'TikTok', spend: 36500, duration: 16, size: '9:16', days: 5, cover: 'showcase/sarah.jpg', title: '卧室口播 · 到账晒单',
+    prompt: '女生在卧室床上对镜头展示手机到账截图，语气兴奋但自然，暖灯环境，竖屏真实分享感。' },
+  { id: 'sc-22', product: 'TileRush', industry: '游戏', type: '精剪', source: 'TikTok', spend: 27800, duration: 13, size: '9:16', days: 12, cover: 'frames/frame_03.jpg', title: '游戏录屏 · 连击高光',
+    prompt: '手游录屏穿插玩家惊喜反应，连击特效满屏，节奏快切，前 2 秒先给最高分画面。' },
+  { id: 'sc-23', product: 'FaceGlow', industry: '工具', type: 'AI', source: 'Kwai', spend: 11200, duration: 19, size: '9:16', days: 3, cover: 'showcase/chloe.jpg', title: '前后对比 · 滤镜展示',
+    prompt: '女生半脸对比展示滤镜前后效果，手指出屏引导看细节，干净背景，工具类转化口吻。' },
+  { id: 'sc-24', product: 'DramaGo', industry: '网赚', type: '实拍', source: 'Kwai', spend: 24600, duration: 22, size: '9:16', days: 18, cover: 'frames/frame_05.jpg', title: '地铁口播 · 碎片时间',
+    prompt: '通勤女生在地铁口对镜头讲用碎片时间刷短剧赚零花钱，环境真实略嘈杂，手持拍摄。' },
+  { id: 'sc-25', product: 'ChatLoop', industry: '社交', type: '混剪', source: 'TikTok', spend: 9800, duration: 17, size: '1:1', days: 10, cover: 'showcase/mei.jpg', title: '群聊截图 · 社交证明',
+    prompt: '快速切群聊截图和用户好评，中间穿插产品界面，强调朋友都在用，1:1 方形投放版。' },
+  { id: 'sc-26', product: 'BoxLab', industry: '工具', type: '原生', source: 'TikTok', spend: 15400, duration: 26, size: '9:16', days: 7, cover: 'showcase/jonas.jpg', title: '工作台 · 效率展示',
+    prompt: '博主在整洁工作台演示 App 如何省时间，屏幕录制与真人口播交叉，专业但不硬广。' },
+  { id: 'sc-27', product: 'SpinWin', industry: '游戏', type: 'AI', source: 'Kwai', spend: 33200, duration: 11, size: '9:16', days: 2, cover: 'showcase/freya.jpg', title: '转盘抽奖 · 悬念开场',
+    prompt: '游戏转盘特写从慢到快，停在中奖格时切真人惊喜反应，强钩子竖屏广告。' },
+  { id: 'sc-28', product: 'VibeCut', industry: '互娱', type: '精剪', source: 'TikTok', spend: 18900, duration: 21, size: '9:16', days: 15, cover: 'showcase/victor.jpg', title: '卡点混剪 · 音乐驱动',
+    prompt: '按鼓点切镜头，人物动作与音乐同步，霓虹色调，适合娱乐向投放的开场。' },
+  { id: 'sc-29', product: 'EarnHub', industry: '网赚', type: '混剪', source: 'TikTok', spend: 41200, duration: 14, size: '9:16', days: 0, cover: 'frames/frame_07.jpg', title: '收益曲线 · 数据可视化',
+    prompt: 'App 收益曲线动画配合真人 pointing 关键数字，强调今日收益，竖屏信息密度高。' },
+  { id: 'sc-30', product: 'PetTok', industry: '其他', type: '实拍', source: 'Kwai', spend: 7200, duration: 24, size: '9:16', days: 6, cover: 'frames/frame_08.jpg', title: '宠物日常 · 软性植入',
+    prompt: '记录宠物日常片段，主人在旁自然提到产品，不硬推，生活 vlog 质感。' },
+];
+
+/* 部分种子用完整分镜级提示词，方便爆款库详情里演示展开 / 收起。 */
+const SHOWCASE_LONG_PROMPTS = {
+  'sc-01': `A stop-motion animation shot from a vertical mobile phone shooting perspective, set against a pure, saturated bright green backdrop. In the extreme foreground, a hand enters holding a smartphone displaying a short-drama rewards app. The hand taps through three payout tiers (R$2 / R$4 / R$6) while coins animate on screen.
+
+镜头 1（0–3s）：竖屏自拍视角，年轻女生坐在暖色客厅沙发上对镜头口播，手里拿着产品边说边展示，语气像跟朋友分享，自然 handheld 拍摄感。
+镜头 2（3–10s）：切至手机屏特写，收益结算页数字依次亮起，手指轻点「提现」按钮，UI 清晰可读，轻微屏幕反光。
+镜头 3（10–18s）：回到中景，女生把到账截图举到镜头前，表情从平静到惊喜，背景是普通居家环境，真实感优先。
+
+Audio：轻快的 Lo-fi 底噪 + 女生葡语口播「assistir um episódio e já cai na conta」，保留少量环境白噪，整体像 TikTok 原生 UGC 广告。`,
+  'sc-04': `日本美女在明亮客厅对镜头介绍一款麻将手游，手持手机展示界面，语气亲切自然，9:16 竖屏真实质感。
+
+镜头 1（0–3s）：中景口播，女生微笑看向镜头，背景是暖色客厅与绿植，手持手机竖屏展示游戏主界面，节奏轻快，前 2 秒先给最高分连击画面作钩子。
+镜头 2（3–8s）：切至手机屏幕特写，手指滑动展示关卡地图、奖励弹窗与转盘动画，UI 元素清晰可读，轻微手持晃动，景深浅。
+镜头 3（8–15s）：回到中景，女生用另一只手比划「三消」手势，表情从好奇到惊喜，最后指向屏幕上的高分排行榜，自然光从左侧窗入。
+
+Audio：轻快的日系 BGM，女生用日语口语介绍「この麻雀ゲーム、すごくハマる」，环境音保留少量客厅白噪，不做棚拍感，整体像真实 TikTok 原生投放素材。`,
+  'sc-16': `女生凑近镜头压低声音抛出一个悬念问题，随后转身指向身后屏幕上的游戏画面，暗调布光带戏剧感，9:16 竖屏。
+
+Opening hook（0–2s）：极近景面部特写，女生 whisper「你绝对猜不到这关隐藏奖励在哪」，眼神看镜头，浅景深，冷调侧光。
+Mid section（2–9s）：快速切三组游戏录屏——连击特效满屏、Boss 战倒计时、开箱稀有皮肤，节奏随鼓点加速，每切 1.5s 插入一次女生 Reaction 小窗。
+Closing（9–14s）：回到中景，女生指向屏幕上的 limited offer 倒计时，字幕叠加「今日免广告」，最后 1 秒 freeze 在最高光画面。
+
+Audio：开头 2 秒环境静音突出 whisper，随后电子鼓点 + 游戏音效层叠；口播英语短句「This boss drops the rarest skin」，BGM 在 12s 处 hard cut 留 UI 点击声作 CTA。`,
+};
+
+const SHOWCASE_BATCHES = 12;
+const SHOWCASE_VARIANTS = [
+  '生活流版本', '高转化版本', '节奏加快版', '情绪强化版', '品牌感版本',
+  '开场强化版', '镜头提速版', '口语化版本', '质感提升版', '测试放量版',
+];
+
+function showcaseDays(batch, index, baseDays) {
+  const slot = batch * SHOWCASE_SEEDS.length + index;
+  if (slot % 3 === 0) return 0;
+  if (slot % 3 === 1) return 1 + (index % 4);
+  return Math.min(88, baseDays + batch * 2 + (index % 6));
+}
+
+const SHOWCASE = Array.from({ length: SHOWCASE_BATCHES }, (_, batch) => SHOWCASE_SEEDS.map((item, index) => {
+  const region = regionLabelByIndex(batch * SHOWCASE_SEEDS.length + index);
+  const days = showcaseDays(batch, index, item.days);
+  const basePrompt = SHOWCASE_LONG_PROMPTS[item.id] || item.prompt;
+  if (batch === 0) return { ...item, region, days, prompt: basePrompt };
+  const variant = SHOWCASE_VARIANTS[(batch - 1) % SHOWCASE_VARIANTS.length];
+  return {
+    ...item,
+    id: `${item.id}-v${batch}`,
+    spend: Math.max(400, item.spend - batch * 2800 - (index % 3) * 450),
+    days,
+    title: `${item.title} · ${variant}`,
+    prompt: `${basePrompt} ${variant}，保留主体卖点并强化前 3 秒的画面钩子。`,
+    region,
+  };
+})).flat();
 
 /* ── 侧边栏 ── */
 function CloneSidebar({ onHome }) {
@@ -563,6 +665,7 @@ function AtMenu({ x, y, top, list, active, query, onPick, onSetActive, onPickMor
 export function VideoGenModal({
   onClose, onRestart, visible = true, embedded = false,
   onSubmitTask = null, initialVideoUrl = null, initialTaskId = null,
+  onOpenLibrary = null, onStartClone = null, onStartFanout = null,
   // 「重新编辑」注入：把用户上次写的输入和出参设置原样摆回去
   initialSourceText = '', initialImages = null, initialCount = 0,
   initialVideos = null, initialAudios = null,
@@ -671,7 +774,14 @@ export function VideoGenModal({
     setDuration(d => (ds.includes(d) ? d : ds[0]));
   };
   // 爆款库点一条＝把它的提示词灌进输入框（封面是成片截图不是参考素材，不自动挂图）
-  const handleApplyTemplate = (item) => { injectText(item.prompt); };
+  const handleApplyTemplate = (item) => {
+    injectText(item.prompt);
+    requestAnimationFrame(() => rootRef.current?.querySelector('.composer-input--rich')?.focus());
+  };
+  const handleOpenLibrary = (tag) => {
+    if (onOpenLibrary) onOpenLibrary(tag, handleApplyTemplate);
+    else setLibraryTag(tag);
+  };
 
   /* 生成：脚本在这里一次性配好直接进任务中心，不再让用户过一道预览。
      裂变规则（Magic Prompt 三档怎么影响 N 条的差异性）全在 buildVariantScripts 里，
@@ -739,7 +849,7 @@ export function VideoGenModal({
               refs={refs} onAddLocalFiles={handleAddLocalFiles} onAddLibraryItems={handleAddLibraryItems}
               onRemoveRef={handleRemoveRef} issues={issues}
               onApplyTemplate={handleApplyTemplate}
-              onOpenLibrary={tag => setLibraryTag(tag)}
+              onOpenLibrary={handleOpenLibrary}
               videoModel={videoModel} setVideoModel={handleModelChange}
               aspect={aspect} setAspect={setAspect} duration={duration} setDuration={setDuration}
               magic={magic} setMagic={setMagic}
@@ -750,10 +860,12 @@ export function VideoGenModal({
 
         {/* 全屏爆款库：盖住内容区（含顶栏），侧栏保留 */}
         {libraryTag !== null && (
-          <ShowcaseLibrary
+          <ViralLibraryPage
             initialTag={libraryTag}
             onUse={handleApplyTemplate}
             onClose={() => setLibraryTag(null)}
+            onClone={onStartClone}
+            onFanout={onStartFanout}
           />
         )}
       </div>
@@ -1234,55 +1346,643 @@ function Step1InputIdea({
   );
 }
 
-/* ── 爆款卡片：等宽 9:16，卡面只留角标（热度 / NEW / 来源），标题与「用这条」hover 才出 ── */
-function HotCard({ item, onUse }) {
+function FilterPills({ label, options, value, onChange }) {
   return (
-    <button type="button" className="hot-card" onClick={() => onUse(item)} title={item.title}>
-      <img src={item.cover} alt={item.title} className="hot-card-cover" loading="lazy" />
-      {item.days <= 3 && <span className="hot-new">NEW</span>}
-      <span className="hot-badge"><Flame size={11} strokeWidth={2} />{item.heat}</span>
-      <span className="hot-src"><Share2 size={10} strokeWidth={2} />{item.src}</span>
-      <span className="hot-card-foot">
-        <span className="hot-card-title">{item.title}</span>
-        <span className="hot-card-use">用这条 <ArrowUp size={11} strokeWidth={2.4} /></span>
+    <div className="lib-filter-row">
+      <span className="lib-filter-label">{label}</span>
+      <div className="lib-filter-pills" role="group" aria-label={label}>
+        {options.map(item => (
+          <button key={item} type="button" className={`hot-tag ${item === value ? 'active' : ''}`}
+            aria-pressed={item === value} onClick={() => onChange(item)}>{item}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function useCalendarPanelStyle(open, anchorRef) {
+  const [style, setStyle] = useState({});
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const place = () => {
+      const box = anchorRef.current?.getBoundingClientRect();
+      if (!box) return;
+      const width = Math.min(280, window.innerWidth - 24);
+      const panelH = 320;
+      let left = box.left;
+      if (left + width > window.innerWidth - 12) left = Math.max(12, window.innerWidth - 12 - width);
+      if (left < 12) left = 12;
+      const spaceBelow = window.innerHeight - box.bottom - 12;
+      const spaceAbove = box.top - 12;
+      const openBelow = spaceBelow >= 280 || spaceBelow >= spaceAbove;
+      const top = openBelow
+        ? box.bottom + 6
+        : Math.max(12, box.top - 6 - Math.min(panelH, spaceAbove));
+      setStyle({
+        top: `${Math.round(top)}px`,
+        left: `${Math.round(left)}px`,
+        width: `${Math.round(width)}px`,
+      });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open, anchorRef]);
+  return style;
+}
+
+function monthCursorFromIso(iso, fallbackIso) {
+  const date = parseIsoDate(iso) || parseIsoDate(fallbackIso) || new Date();
+  return { year: date.getFullYear(), month: date.getMonth() + 1 };
+}
+
+/* 时间跨度：自定义深色月历，点快捷档会清掉，避免档位和日历各筛一套。 */
+function DateRangeField({ from, to, max, onChange }) {
+  const hasValue = Boolean(from || to);
+  const [editing, setEditing] = useState(null);
+  const [cursor, setCursor] = useState(() => monthCursorFromIso(from || to, max));
+  const wrapRef = useRef(null);
+  const open = Boolean(editing);
+  const panelStyle = useCalendarPanelStyle(open, wrapRef);
+
+  useEffect(() => {
+    if (!editing) return;
+    const seed = editing === 'to' ? (to || from) : (from || to);
+    setCursor(monthCursorFromIso(seed, max));
+  }, [editing]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = event => { if (!wrapRef.current?.contains(event.target)) setEditing(null); };
+    const escape = event => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      setEditing(null);
+    };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [open]);
+
+  const cells = monthGrid(cursor.year, cursor.month);
+  const rangeStart = from && to && from > to ? to : from;
+  const rangeEnd = from && to && from > to ? from : to;
+
+  const pickDay = iso => {
+    if (editing === 'from') {
+      onChange(iso, to);
+      setEditing(to ? null : 'to');
+      return;
+    }
+    onChange(from, iso);
+    setEditing(from ? null : 'from');
+  };
+
+  const shiftMonth = delta => {
+    const next = new Date(cursor.year, cursor.month - 1 + delta, 1);
+    setCursor({ year: next.getFullYear(), month: next.getMonth() + 1 });
+  };
+
+  return (
+    <div ref={wrapRef} className={`lib-daterange ${hasValue ? 'has-value' : ''} ${open ? 'is-open' : ''}`}
+      role="group" aria-label="自定义时间跨度">
+      <Calendar size={14} strokeWidth={1.8} aria-hidden="true" />
+      <button type="button" className={`lib-daterange-field ${from ? '' : 'is-empty'}`}
+        aria-label="开始日期" aria-expanded={editing === 'from'} aria-haspopup="dialog"
+        onClick={() => setEditing(current => current === 'from' ? null : 'from')}>
+        {from || '开始日期'}
+      </button>
+      <span className="lib-daterange-sep" aria-hidden="true">→</span>
+      <button type="button" className={`lib-daterange-field ${to ? '' : 'is-empty'}`}
+        aria-label="结束日期" aria-expanded={editing === 'to'} aria-haspopup="dialog"
+        onClick={() => setEditing(current => current === 'to' ? null : 'to')}>
+        {to || '结束日期'}
+      </button>
+      {hasValue && (
+        <button type="button" className="lib-daterange-clear" onClick={() => { onChange('', ''); setEditing(null); }}
+          title="清除时间跨度" aria-label="清除时间跨度">
+          <X size={12} />
+        </button>
+      )}
+      {open && (
+        <div className="lib-cal lib-daterange-cal" role="dialog" aria-label="选择日期" style={panelStyle}>
+          <div className="lib-cal-head">
+            <button type="button" className="lib-cal-nav" aria-label="上个月" onClick={() => shiftMonth(-1)}>
+              <ChevronLeft size={14} />
+            </button>
+            <span className="lib-cal-title">{cursor.year}年{cursor.month}月</span>
+            <button type="button" className="lib-cal-nav" aria-label="下个月" onClick={() => shiftMonth(1)}>
+              <ChevronRight size={14} />
+            </button>
+          </div>
+          <div className="lib-cal-week" aria-hidden="true">
+            {CAL_WEEKDAYS.map(day => <span key={day}>{day}</span>)}
+          </div>
+          <div className="lib-cal-days">
+            {cells.map(cell => {
+              const disabled = !cell.inMonth || (max && cell.iso > max);
+              const selected = cell.iso === from || cell.iso === to;
+              const inRange = Boolean(cell.inMonth && rangeStart && rangeEnd && cell.iso > rangeStart && cell.iso < rangeEnd);
+              const today = cell.iso === max;
+              return (
+                <button
+                  key={cell.iso}
+                  type="button"
+                  disabled={disabled}
+                  className={[
+                    'lib-cal-day',
+                    cell.inMonth ? '' : 'is-out',
+                    selected ? 'is-selected' : '',
+                    inRange ? 'is-in-range' : '',
+                    today && !selected ? 'is-today' : '',
+                  ].filter(Boolean).join(' ')}
+                  onClick={() => pickDay(cell.iso)}
+                >
+                  {cell.day}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SpendRangeField({ min, max, onChange }) {
+  const hasValue = Boolean(min || max);
+  return (
+    <div className={`lib-spendrange ${hasValue ? 'has-value' : ''}`}>
+      <DollarSign size={14} strokeWidth={1.8} aria-hidden="true" />
+      <input
+        type="text"
+        className={`lib-spendrange-field ${min ? '' : 'is-empty'}`}
+        value={min}
+        onChange={e => onChange(e.target.value, max)}
+        placeholder="最低"
+        aria-label="最低消耗美金"
+        inputMode="decimal"
+        autoComplete="off"
+      />
+      <span className="lib-spendrange-sep" aria-hidden="true">→</span>
+      <input
+        type="text"
+        className={`lib-spendrange-field ${max ? '' : 'is-empty'}`}
+        value={max}
+        onChange={e => onChange(min, e.target.value)}
+        placeholder="最高"
+        aria-label="最高消耗美金"
+        inputMode="decimal"
+        autoComplete="off"
+      />
+      {hasValue && (
+        <button type="button" className="lib-spendrange-clear"
+          onClick={() => onChange('', '')}
+          title="清除消耗范围" aria-label="清除消耗范围">
+          <X size={12} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function itemAspect(item) {
+  if (item.size === '1:1') return '1 / 1';
+  if (item.size === '16:9') return '16 / 9';
+  return '9 / 16';
+}
+
+function downloadLibraryClip(item) {
+  const a = document.createElement('a');
+  a.href = DEMO_CLIP;
+  a.download = `${item.product || 'viral-video'}.mp4`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function displayField(value) {
+  const text = String(value ?? '').trim();
+  return text || '暂无数据';
+}
+
+/* 只列库数据里真实有的字段，不编 CID / 版权 / 制作团队。 */
+function libraryInfoRows(item) {
+  return [
+    { label: '产品名称', value: item.product },
+    { label: '行业分类', value: item.industry },
+    { label: '视频类型', value: item.type },
+    { label: '来源平台', value: item.source },
+    { label: '投放地区', value: item.region },
+    { label: '视频尺寸', value: item.size },
+    { label: '时长', value: item.duration ? `${item.duration}s` : '' },
+    { label: '近 7 日消耗', value: formatSpend(item.spend) },
+    { label: '创建时间', value: `${item.days} 天前` },
+  ];
+}
+
+const PROMPT_COLLAPSE_CHARS = 100;
+
+/* 爆款库详情 · 提示词卡片：折叠预览、复制、灌进视频生成输入框。 */
+function LibraryPreviewPromptCard({ prompt, onUse, disabled = false }) {
+  const text = String(prompt ?? '').trim();
+  const display = text || '暂无数据';
+  const bodyRef = useRef(null);
+  const collapsibleRef = useRef(text.length > PROMPT_COLLAPSE_CHARS);
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [canCollapse, setCanCollapse] = useState(collapsibleRef.current);
+
+  useEffect(() => {
+    setExpanded(false);
+    setCopied(false);
+    collapsibleRef.current = text.length > PROMPT_COLLAPSE_CHARS;
+    setCanCollapse(collapsibleRef.current);
+  }, [text]);
+
+  /* 用真实行高判断是否溢出 3 行，比纯字数阈值更准（含中英文混排、换行分镜）。 */
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el || expanded) return;
+    const overflows = el.scrollHeight > el.clientHeight + 1;
+    collapsibleRef.current = overflows || text.length > PROMPT_COLLAPSE_CHARS;
+    setCanCollapse(collapsibleRef.current);
+  }, [text, expanded]);
+
+  const showToggle = expanded || canCollapse;
+
+  const copyPrompt = () => {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    }).catch(() => {});
+  };
+
+  return (
+    <div className="lib-preview-prompt-card">
+      <div className="lib-preview-prompt-head">
+        <span className="lib-preview-prompt-title">提示词</span>
+        <button
+          type="button"
+          className={`lib-preview-prompt-copy${copied ? ' lib-preview-prompt-copy--ok' : ''}`}
+          onClick={copyPrompt}
+          disabled={!text}
+          title="复制提示词"
+          aria-label="复制提示词"
+        >
+          {copied ? <Check size={15} strokeWidth={2} /> : <Copy size={15} strokeWidth={2} />}
+        </button>
+      </div>
+      <p
+        ref={bodyRef}
+        className={`lib-preview-prompt-body${canCollapse && !expanded ? ' is-collapsed' : ''}`}
+        id="lib-preview-prompt-text"
+      >
+        {display}
+      </p>
+      <div className="lib-preview-prompt-foot">
+        {showToggle ? (
+          <button
+            type="button"
+            className="lib-preview-prompt-toggle"
+            onClick={() => setExpanded(v => !v)}
+            aria-expanded={expanded}
+            aria-controls="lib-preview-prompt-text"
+          >
+            {expanded ? '收起' : '展开'}
+            {expanded ? <ChevronUp size={14} strokeWidth={2.2} /> : <ChevronDown size={14} strokeWidth={2.2} />}
+          </button>
+        ) : <span aria-hidden="true" />}
+        <button
+          type="button"
+          className="lib-preview-prompt-use"
+          onClick={onUse}
+          disabled={disabled || !text}
+        >
+          使用提示词
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* 一级菜单库页：点卡片后右侧详情（预览 + 基础信息 / 提示词 tab），不改卡片样式、不跳进制作同款。
+   克隆 / 裂变快捷入口钉在详情底部：点了就进现有工具，把这条片子当成刚上传的基准。 */
+function LibraryPreview({ item, onClose, onPrev, onNext, onUse = null, onClone = null, onFanout = null }) {
+  const videoRef = useRef(null);
+  const closeRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [detailTab, setDetailTab] = useState('info');
+
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    setPlaying(false);
+    setDetailTab('info');
+    const video = videoRef.current;
+    if (!video) return undefined;
+    video.pause();
+    try { video.currentTime = 0; } catch { /* demo clip may not be seekable yet */ }
+    return undefined;
+  }, [item.id]);
+
+  const toggle = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) video.play().catch(() => {});
+    else video.pause();
+  };
+
+  return (
+    <aside className="lib-preview" aria-label={`${item.product} 详情`}>
+      <div className="lib-preview-panel">
+        <div className="lib-preview-bar">
+          <button ref={closeRef} type="button" className="lib-preview-icon" onClick={onClose}
+            aria-label="关闭详情" title="关闭">
+            <X size={20} />
+          </button>
+          <div className="lib-preview-acts">
+            <button type="button" className="lib-preview-icon" onClick={() => downloadLibraryClip(item)}
+              aria-label="下载视频" title="下载">
+              <Download size={18} />
+            </button>
+            <button type="button" className="lib-preview-icon" onClick={onPrev}
+              aria-label="上一条" title="上一条">
+              <ChevronLeft size={20} />
+            </button>
+            <button type="button" className="lib-preview-icon" onClick={onNext}
+              aria-label="下一条" title="下一条">
+              <ChevronRight size={20} />
+            </button>
+          </div>
+        </div>
+        <div className="lib-preview-body">
+          <div className="lib-preview-stage">
+            <div
+              className="lib-preview-frame"
+              style={{ aspectRatio: itemAspect(item) }}
+              onClick={toggle}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
+              role="button"
+              tabIndex={0}
+              aria-label={playing ? `暂停 ${item.product}` : `播放 ${item.product}`}
+            >
+              <video
+                ref={videoRef}
+                src={DEMO_CLIP}
+                poster={item.cover}
+                playsInline
+                preload="metadata"
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onEnded={() => setPlaying(false)}
+              />
+              {!playing && (
+                <span className="lib-preview-play" aria-hidden="true">
+                  <Play size={28} fill="currentColor" strokeWidth={0} />
+                </span>
+              )}
+            </div>
+          </div>
+          <section className="lib-preview-info" aria-labelledby="lib-preview-detail-tabs">
+            <div id="lib-preview-detail-tabs" className="lib-preview-tabs" role="tablist" aria-label="视频详情">
+              <button
+                type="button"
+                role="tab"
+                id="lib-preview-tab-info"
+                aria-selected={detailTab === 'info'}
+                aria-controls="lib-preview-panel-info"
+                className={`lib-preview-tab${detailTab === 'info' ? ' on' : ''}`}
+                onClick={() => setDetailTab('info')}
+              >
+                基础信息
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="lib-preview-tab-prompt"
+                aria-selected={detailTab === 'prompt'}
+                aria-controls="lib-preview-panel-prompt"
+                className={`lib-preview-tab${detailTab === 'prompt' ? ' on' : ''}`}
+                onClick={() => setDetailTab('prompt')}
+              >
+                提示词
+              </button>
+            </div>
+            {detailTab === 'info' ? (
+              <div
+                id="lib-preview-panel-info"
+                role="tabpanel"
+                aria-labelledby="lib-preview-tab-info"
+                className="lib-preview-tabpanel"
+              >
+                <dl className="lib-preview-dl">
+                  {libraryInfoRows(item).map(row => (
+                    <div key={row.label} className="lib-preview-row">
+                      <dt>{row.label}</dt>
+                      <dd>
+                        <span>{displayField(row.value)}</span>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ) : (
+              <div
+                id="lib-preview-panel-prompt"
+                role="tabpanel"
+                aria-labelledby="lib-preview-tab-prompt"
+                className="lib-preview-tabpanel"
+              >
+                <LibraryPreviewPromptCard
+                  prompt={item.prompt}
+                  disabled={!onUse}
+                  onUse={() => onUse && onUse(item)}
+                />
+              </div>
+            )}
+          </section>
+        </div>
+        {(onClone || onFanout) && (
+          <div className="lib-preview-ctas" role="group" aria-label="用这条视频继续创作">
+            {onClone && (
+              <button type="button" className="btn-primary"
+                onClick={() => onClone(item)}
+                aria-label={`用「${item.product}」开始视频克隆`}>
+                <Copy size={16} strokeWidth={2} />
+                视频克隆
+              </button>
+            )}
+            {onFanout && (
+              <button type="button" className="btn-outline"
+                onClick={() => onFanout(item)}
+                aria-label={`用「${item.product}」开始视频裂变`}>
+                <GitBranch size={15} strokeWidth={2} />
+                视频裂变
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+/* ── 爆款卡片：来源 + 产品名，缩略图，类型 / 时长 / 消耗。
+   库页点卡片看详情；视频生成第一步点卡片灌提示词。卡片结构两边同一套。── */
+function HotCard({
+  item, onUse, onOpen, selected = false, actionLabel = '制作同款', layout = 'action',
+  favorited = false, onToggleFavorite = null,
+}) {
+  const inspect = typeof onOpen === 'function';
+  const videoRef = useRef(null);
+  const [hovering, setHovering] = useState(false);
+
+  const handleEnter = () => {
+    setHovering(true);
+    const video = videoRef.current;
+    if (!video) return;
+    try { video.currentTime = 0; } catch { /* demo clip may not be seekable yet */ }
+    video.play().catch(() => {});
+  };
+  const handleLeave = () => {
+    setHovering(false);
+    const video = videoRef.current;
+    if (!video) return;
+    video.pause();
+    try { video.currentTime = 0; } catch { /* noop */ }
+  };
+
+  return (
+    <div role="button" tabIndex={0}
+      className={`hot-card${selected ? ' selected' : ''}`}
+      onClick={() => (inspect ? onOpen(item) : onUse(item))}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          inspect ? onOpen(item) : onUse(item);
+        }
+      }}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+      onFocus={handleEnter}
+      onBlur={handleLeave}
+      title={item.title}
+      aria-pressed={inspect ? selected : undefined}
+      aria-label={inspect
+        ? `${item.product}，${item.source}，消耗 ${formatSpend(item.spend)}，查看详情`
+        : `${item.product}，${item.source}，消耗 ${formatSpend(item.spend)}，${actionLabel}`}>
+      <span className="hot-card-head">
+        <span className="hot-src">{item.source === 'TikTok' ? 'TK' : 'Kwai'}</span>
+        <span className="hot-card-product">{item.product}</span>
+        <span className="hot-card-industry">{item.industry}</span>
       </span>
-    </button>
+      <span className="hot-card-media">
+        <img src={item.cover} alt="" className={`hot-card-cover${hovering ? ' is-hidden' : ''}`} loading="lazy" />
+        <video
+          ref={videoRef}
+          src={DEMO_CLIP}
+          poster={item.cover}
+          muted
+          playsInline
+          preload="none"
+          loop
+          className={`hot-card-video${hovering ? ' is-visible' : ''}`}
+          aria-hidden="true"
+        />
+        {item.days <= 3 && <span className="hot-new">NEW</span>}
+        {onToggleFavorite && (
+          <button type="button"
+            className={`hot-fav-btn${favorited ? ' is-faved' : ''}`}
+            onClick={(e) => { e.stopPropagation(); onToggleFavorite(item.id); }}
+            aria-pressed={favorited}
+            aria-label={favorited ? `取消收藏 ${item.product}` : `收藏 ${item.product}`}
+            title={favorited ? '取消收藏' : '收藏'}>
+            <Bookmark size={14} strokeWidth={2} fill={favorited ? 'currentColor' : 'none'} />
+          </button>
+        )}
+        <span className="hot-type">{item.type}</span>
+        <span className="hot-dur-center" aria-hidden="true">
+          <Play size={11} fill="currentColor" strokeWidth={0} />
+          {item.duration}s
+        </span>
+      </span>
+      {layout === 'stats' ? (
+        <div className="hot-card-stats">
+          <div className="hot-stat">
+            <span className="hot-stat-label">今日消耗</span>
+            <span className="hot-stat-val">{formatSpend(deriveTodaySpend(item.spend))}</span>
+          </div>
+          <div className="hot-stat">
+            <span className="hot-stat-label">近7日消耗</span>
+            <span className="hot-stat-val">{formatSpend(item.spend)}</span>
+          </div>
+          <div className="hot-stat">
+            <span className="hot-stat-label">上传时间</span>
+            <span className="hot-stat-val">{formatUploadDate(item.days)}</span>
+          </div>
+        </div>
+      ) : (
+        <>
+          <span className="hot-card-meta">
+            <span>{item.region}</span>
+            <span className="hot-spend">{formatSpend(item.spend)}</span>
+          </span>
+          <span className="hot-card-use">{actionLabel} <ArrowUp size={11} strokeWidth={2.4} /></span>
+        </>
+      )}
+    </div>
   );
 }
 
 /* ── 第一步下方的爆款区：一屏只露一排半，全部走「查看全部」进库页 ── */
 const HOT_PREVIEW_COUNT = 12;
 function HotShowcase({ onUse, onOpenLibrary }) {
-  const [tag, setTag] = useState('全部');
-  const list = SHOWCASE
-    .filter(s => tag === '全部' || s.tag === tag)
-    .sort((a, b) => b.heat - a.heat)
-    .slice(0, HOT_PREVIEW_COUNT);
+  const [industry, setIndustry] = useState('全部');
+  const { toggleFavorite, isFavorited } = useViralFavorites();
+  const list = sortLibrary(
+    filterLibrary(SHOWCASE, { industry }),
+    'spend',
+  ).slice(0, HOT_PREVIEW_COUNT);
 
   return (
     <div className="hot-sect">
       <div className="hot-sect-head">
         <div className="hot-sect-head-left">
           <h3 className="hot-sect-title">爆款视频库</h3>
-          <p className="hot-sect-sub">近 7 日采用最多的投放素材，热度从高到低；点一条直接灌进上面的输入框</p>
+          <p className="hot-sect-sub">近 7 日消耗最高的投放素材；点一条直接灌进上面的输入框</p>
         </div>
-        <button type="button" className="hot-seeall" onClick={() => onOpenLibrary(tag)}>
+        <button type="button" className="hot-seeall" onClick={() => onOpenLibrary(industry)}>
           查看全部 <ChevronRight size={15} />
         </button>
       </div>
 
-      <div className="hot-tagrow">
-        {HOT_TAGS.map(t => (
-          <button key={t} type="button" className={`hot-tag ${t === tag ? 'active' : ''}`} onClick={() => setTag(t)}>{t}</button>
+      <div className="hot-tagrow" role="group" aria-label="行业分类">
+        {INDUSTRIES.map(item => (
+          <button key={item} type="button" className={`hot-tag ${item === industry ? 'active' : ''}`}
+            aria-pressed={item === industry} onClick={() => setIndustry(item)}>{item}</button>
         ))}
       </div>
 
       <div className="hot-grid">
-        {list.map(item => <HotCard key={item.id} item={item} onUse={onUse} />)}
+        {list.map(item => (
+          <HotCard key={item.id} item={item} onUse={onUse} actionLabel="用这条"
+            favorited={isFavorited(item.id)} onToggleFavorite={toggleFavorite} />
+        ))}
       </div>
 
       <div className="hot-sect-foot">
-        <button type="button" className="hot-viewall" onClick={() => onOpenLibrary(tag)}>
+        <button type="button" className="hot-viewall" onClick={() => onOpenLibrary(industry)}>
           查看全部<b>爆款视频库</b>
         </button>
       </div>
@@ -1290,68 +1990,270 @@ function HotShowcase({ onUse, onOpenLibrary }) {
   );
 }
 
-/* ── 全屏爆款库：搜索 + 排序 + 分类，密集网格 ── */
-function ShowcaseLibrary({ initialTag = '全部', onUse, onClose }) {
-  const [tag, setTag] = useState(initialTag);
+/* ── 爆款库详情页：视频生成内与平台一级菜单共用搜索、排序、分类和卡片 ── */
+export function ViralLibraryPage({
+  initialTag = '全部', onUse: _onUse, onClose = null, standalone = false,
+  onClone = null, onFanout = null,
+}) {
+  const [industry, setIndustry] = useState(initialTag);
+  const [source, setSource] = useState('TikTok');
+  const [type, setType] = useState('全部');
+  const [region, setRegion] = useState([]);
+  const [duration, setDuration] = useState('全部时长');
+  const [size, setSize] = useState('全部尺寸');
+  const [created, setCreated] = useState('今天');
+  const [createdFrom, setCreatedFrom] = useState('');
+  const [createdTo, setCreatedTo] = useState('');
+  const [spendMin, setSpendMin] = useState('');
+  const [spendMax, setSpendMax] = useState('');
   const [q, setQ] = useState('');
-  const [sort, setSort] = useState('heat');   // heat | new
+  const [sort, setSort] = useState('spend');
+  const [view, setView] = useState('grid');
+  const [page, setPage] = useState(1);
+  const [previewId, setPreviewId] = useState(null);
+  const { favoriteIds, toggleFavorite, isFavorited } = useViralFavorites();
+  const bodyRef = useRef(null);
+  const todayIso = toIsoDate();
+  const customRange = Boolean(createdFrom || createdTo);
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    setIndustry(initialTag);
+  }, [initialTag]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [industry, source, type, region, duration, size, created, createdFrom, createdTo, q, sort, spendMin, spendMax, favoriteIds]);
+
+  const kw = q.trim();
+  const filtered = filterLibrary(SHOWCASE, {
+    q, industry, source, type, region, duration, size, created, createdFrom, createdTo, spendMin, spendMax,
+  });
+  const scoped = sort === 'fav' ? filterFavorites(filtered, favoriteIds) : filtered;
+  const list = sortLibrary(scoped, sort === 'fav' ? 'spend' : sort);
+  const previewIndex = previewId ? list.findIndex(item => item.id === previewId) : -1;
+  const previewItem = previewIndex >= 0 ? list[previewIndex] : null;
+  const totalPages = Math.max(1, Math.ceil(list.length / LIBRARY_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageItems = list.slice((currentPage - 1) * LIBRARY_PAGE_SIZE, currentPage * LIBRARY_PAGE_SIZE);
+  const previewIdRef = useRef(previewId);
+  previewIdRef.current = previewId;
+  const stepPreviewRef = useRef(null);
+
+  useEffect(() => {
+    if (previewId && previewIndex < 0) setPreviewId(null);
+  }, [previewId, previewIndex]);
+
+  const goToPage = (nextPage) => {
+    const safePage = Math.max(1, Math.min(totalPages, nextPage));
+    setPage(safePage);
+    requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' }));
+  };
+  const stepPreview = (dir) => {
+    if (list.length === 0) return;
+    const from = previewIndex >= 0 ? previewIndex : 0;
+    const nextIndex = (from + dir + list.length) % list.length;
+    setPreviewId(list[nextIndex].id);
+    const nextPage = Math.floor(nextIndex / LIBRARY_PAGE_SIZE) + 1;
+    if (nextPage !== currentPage) goToPage(nextPage);
+  };
+  stepPreviewRef.current = stepPreview;
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        if (previewIdRef.current) setPreviewId(null);
+        else if (onClose) onClose();
+        return;
+      }
+      if (!previewIdRef.current) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); stepPreviewRef.current(-1); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); stepPreviewRef.current(1); }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const kw = q.trim();
-  const list = SHOWCASE
-    .filter(s => tag === '全部' || s.tag === tag)
-    .filter(s => !kw || s.title.includes(kw) || s.prompt.includes(kw) || s.tag.includes(kw) || s.src.toLowerCase().includes(kw.toLowerCase()))
-    .sort((a, b) => (sort === 'heat' ? b.heat - a.heat : a.days - b.days));
+  const pickCreatedBand = (item) => {
+    setCreated(item);
+    setCreatedFrom('');
+    setCreatedTo('');
+  };
+  const pickCreatedRange = (from, to) => {
+    setCreatedFrom(from);
+    setCreatedTo(to);
+    if (from || to) setCreated('');
+  };
 
   return (
-    <div className="lib-page">
+    <main className={`lib-page${standalone ? ' lib-page--standalone' : ''}${previewItem ? ' lib-page--preview' : ''}`}>
       <div className="lib-topbar">
         <div className="lib-topbar-left">
-          <button className="icon-btn" onClick={onClose} title="返回"><ArrowLeft size={18} /></button>
-          <span className="lib-title">爆款视频库</span>
-          <span className="lib-count">{list.length} 条</span>
+          {onClose && <button className="icon-btn" onClick={onClose} title="返回" aria-label="返回视频生成"><ArrowLeft size={18} /></button>}
+          <h1 className="lib-title">爆款视频库</h1>
         </div>
-        <div className="lib-topbar-right">
-          <div className="lib-search">
-            <Search size={14} className="lib-search-ic" />
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="搜标题 / 提示词 / 来源…" />
-            {kw && <button className="lib-search-clear" onClick={() => setQ('')} title="清空"><X size={12} /></button>}
+        {onClose && <button className="icon-btn" onClick={onClose} title="关闭" aria-label="关闭爆款视频库"><X size={18} /></button>}
+      </div>
+
+      <div className="lib-body" ref={bodyRef}>
+        <form className="lib-search-bar" onSubmit={e => e.preventDefault()}>
+          <Search size={15} className="lib-search-ic" />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="搜产品名称，例如 mixreels"
+            aria-label="搜索爆款视频" autoFocus />
+          {kw && <button type="button" className="lib-search-clear" onClick={() => setQ('')} title="清空" aria-label="清空搜索"><X size={12} /></button>}
+          <button type="submit" className="lib-search-go">搜索</button>
+        </form>
+
+        <div className="lib-filter-stack">
+          <FilterPills label="行业分类" options={INDUSTRIES} value={industry} onChange={setIndustry} />
+          <FilterPills label="视频来源" options={SOURCES} value={source} onChange={setSource} />
+          <FilterPills label="视频类型" options={VIDEO_TYPES} value={type} onChange={setType} />
+          <div className="lib-filter-row lib-filter-row--groups">
+            <div className="lib-filter-group">
+              <span className="lib-filter-label">广告信息</span>
+              <div className="lib-filter-selects" role="group" aria-label="广告信息">
+                <LibraryRegionPicker value={region} onChange={setRegion} title="投放地区" />
+              </div>
+            </div>
+            <div className="lib-filter-group">
+              <span className="lib-filter-label">消耗范围</span>
+              <div className="lib-filter-selects" role="group" aria-label="消耗范围">
+                <SpendRangeField min={spendMin} max={spendMax}
+                  onChange={(nextMin, nextMax) => { setSpendMin(nextMin); setSpendMax(nextMax); }} />
+              </div>
+            </div>
+            <div className="lib-filter-group">
+              <span className="lib-filter-label">素材属性</span>
+              <div className="lib-filter-selects" role="group" aria-label="素材属性">
+                <Picker value={size} options={SIZES} onChange={setSize} title="视频尺寸" />
+                <Picker value={duration} options={DURATION_BANDS} onChange={setDuration} title="视频时长" />
+              </div>
+            </div>
           </div>
-          <button className="icon-btn" onClick={onClose} title="关闭"><X size={18} /></button>
         </div>
-      </div>
 
-      <div className="lib-filters">
-        <div className="lib-sort">
-          <button type="button" className={`lib-sort-btn ${sort === 'heat' ? 'active' : ''}`} onClick={() => setSort('heat')}>
-            <Flame size={12} strokeWidth={2} /> 热度
-          </button>
-          <button type="button" className={`lib-sort-btn ${sort === 'new' ? 'active' : ''}`} onClick={() => setSort('new')}>
-            <Clock size={12} strokeWidth={2} /> 最新
-          </button>
-        </div>
-        <div className="lib-tagrow">
-          {HOT_TAGS.map(t => (
-            <button key={t} type="button" className={`hot-tag ${t === tag ? 'active' : ''}`} onClick={() => setTag(t)}>{t}</button>
-          ))}
-        </div>
-      </div>
-
-      <div className="lib-body">
-        {list.length === 0
-          ? <div className="lib-empty">没有匹配的素材，换个词或分类试试</div>
-          : <div className="hot-grid hot-grid--dense">
-              {list.map(item => (
-                <HotCard key={item.id} item={item} onUse={it => { onUse(it); onClose(); }} />
+        <div className="lib-chrome">
+          <div className="lib-toolbar">
+            <div className="lib-time-filter">
+              <div className="lib-segment" role="group" aria-label="创建时间">
+                {CREATED_BANDS.map(item => (
+                  <button key={item} type="button"
+                    className={`lib-segment-btn ${item === created && !customRange ? 'active' : ''}`}
+                    aria-pressed={item === created && !customRange}
+                    onClick={() => pickCreatedBand(item)}>
+                    {CREATED_SEGMENT_LABELS[item] || item}
+                  </button>
+                ))}
+              </div>
+              <DateRangeField from={createdFrom} to={createdTo} max={todayIso} onChange={pickCreatedRange} />
+            </div>
+            <span className="lib-count">找到 {list.length} 条相关视频 · 每页 {LIBRARY_PAGE_SIZE} 条</span>
+          </div>
+          <div className="lib-filters">
+            <div className="lib-sort" role="group" aria-label="排序方式">
+              {LIB_SORTS.map(item => (
+                <button key={item.value} type="button" className={`lib-sort-btn ${sort === item.value ? 'active' : ''}`}
+                  aria-pressed={sort === item.value} onClick={() => setSort(item.value)}>
+                  {item.value === 'new' ? <Clock size={12} strokeWidth={2} /> : null}
+                  {item.value === 'fav' ? <Bookmark size={12} strokeWidth={2} /> : null}
+                  {item.label}
+                </button>
               ))}
-            </div>}
+            </div>
+            <div className="lib-view" role="group" aria-label="视图">
+              <button type="button" className={`lib-view-btn ${view === 'grid' ? 'active' : ''}`}
+                aria-pressed={view === 'grid'} onClick={() => setView('grid')} aria-label="宫格">
+                <LayoutGrid size={14} strokeWidth={1.8} />
+              </button>
+              <button type="button" className={`lib-view-btn ${view === 'list' ? 'active' : ''}`}
+                aria-pressed={view === 'list'} onClick={() => setView('list')} aria-label="列表">
+                <List size={14} strokeWidth={1.8} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {list.length === 0
+          ? <div className="lib-empty" role="status">
+              {sort === 'fav'
+                ? '收藏夹还是空的，浏览视频时点右上角书签即可收藏'
+                : '没有匹配的素材，换个产品名或把筛选重置为全部'}
+            </div>
+          : <>
+            {view === 'list' ? (
+              <div className="lib-list">
+                {pageItems.map(item => (
+                  <div key={item.id} role="button" tabIndex={0}
+                    className={`lib-list-row${item.id === previewId ? ' selected' : ''}`}
+                    onClick={() => setPreviewId(item.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPreviewId(item.id); }
+                    }}
+                    aria-pressed={item.id === previewId}
+                    aria-label={`${item.product}，${item.source}，消耗 ${formatSpend(item.spend)}，查看详情`}>
+                    <img src={item.cover} alt="" className="lib-list-thumb" loading="lazy" />
+                    <span className="lib-list-main">
+                      <b>{item.product}</b>
+                      <em>{item.source} · {item.industry} · {item.type}</em>
+                    </span>
+                    <span>{item.region}</span>
+                    <span>{item.duration}s · {item.size}</span>
+                    <span className="hot-spend">{formatSpend(item.spend)}</span>
+                    <span className="lib-list-date">创建 {item.days} 天前</span>
+                    <button type="button"
+                      className={`hot-fav-btn hot-fav-btn--inline${isFavorited(item.id) ? ' is-faved' : ''}`}
+                      onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}
+                      aria-pressed={isFavorited(item.id)}
+                      aria-label={isFavorited(item.id) ? `取消收藏 ${item.product}` : `收藏 ${item.product}`}
+                      title={isFavorited(item.id) ? '取消收藏' : '收藏'}>
+                      <Bookmark size={14} strokeWidth={2} fill={isFavorited(item.id) ? 'currentColor' : 'none'} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="hot-grid hot-grid--dense">
+                {pageItems.map(item => (
+                  <HotCard key={item.id} item={item} selected={item.id === previewId}
+                    layout="stats" onOpen={() => setPreviewId(item.id)}
+                    favorited={isFavorited(item.id)} onToggleFavorite={toggleFavorite} />
+                ))}
+              </div>
+            )}
+            {totalPages > 1 && (
+              <nav className="lib-pagination" aria-label="爆款视频库分页">
+                <button type="button" className="lib-page-btn" onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 1} aria-label="上一页" title="上一页">
+                  <ChevronLeft size={16} />
+                </button>
+                {Array.from({ length: totalPages }, (_, index) => index + 1).map(pageNumber => (
+                  <button type="button" key={pageNumber}
+                    className={`lib-page-btn ${pageNumber === currentPage ? 'active' : ''}`}
+                    aria-current={pageNumber === currentPage ? 'page' : undefined}
+                    onClick={() => goToPage(pageNumber)}>
+                    {pageNumber}
+                  </button>
+                ))}
+                <button type="button" className="lib-page-btn" onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage === totalPages} aria-label="下一页" title="下一页">
+                  <ChevronRight size={16} />
+                </button>
+                <span className="lib-page-status">第 {currentPage} / {totalPages} 页</span>
+              </nav>
+            )}
+          </>}
       </div>
-    </div>
+      {previewItem && (
+        <LibraryPreview
+          item={previewItem}
+          onClose={() => setPreviewId(null)}
+          onPrev={() => stepPreview(-1)}
+          onNext={() => stepPreview(1)}
+          onUse={_onUse}
+          onClone={onClone}
+          onFanout={onFanout}
+        />
+      )}
+    </main>
   );
 }
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CloneModal } from './CloneModal';
-import { VideoGenModal } from './VideoGenModal';
+import { VideoGenModal, ViralLibraryPage } from './VideoGenModal';
 import { VideoFanoutModal } from './VideoFanoutModal';
 import { CloneTaskDetail } from './CloneTaskDetail';
 import { VideoGenTaskDetail } from './VideoGenTaskDetail';
@@ -16,6 +16,7 @@ import './styles.css';
    父 → 子 {type:'selva-clone-open'}                      从工具箱打开克隆流程
    父 → 子 {type:'selva-vgen-open'}                       从工具箱打开视频生成流程
    父 → 子 {type:'selva-vfanout-open'}                    从工具箱打开视频裂变流程
+   父 → 子 {type:'selva-hot-library-open', initialTag}     从平台一级菜单打开爆款视频库
    父 → 子 {type:'selva-clone-hide'}                      宿主侧栏切换走（暂停视频、标记关闭态）
    父 → 子 {type:'selva-clone-open-task', id}             从任务中心打开任务详情
    父 → 子 {type:'selva-clone-seed', tasks:[...]}         平台里那些「早于本次会话」的视频生成任务，
@@ -132,10 +133,12 @@ function fillSeedScripts(task, byId = {}, seen = new Set()) {
 export default function EmbedApp() {
   const [cloneOpen, setCloneOpen] = useState(true);   // iframe 首次加载即处于打开态
   const [cloneKey, setCloneKey] = useState(0);
-  const [view, setView] = useState('flow');           // flow=工作流 | task=任务详情
+  const [view, setView] = useState('flow');           // flow=工作流 | task=任务详情 | library=爆款视频库
   const [flowType, setFlowType] = useState('clone');  // clone=视频克隆 | vgen=视频生成 | fanout=视频裂变
   const [taskId, setTaskId] = useState(null);
   const [editSeed, setEditSeed] = useState(null);     // 「重新编辑」注入：{taskId, videoUrl, promptHtml, seq}
+  const [libraryTag, setLibraryTag] = useState('全部');
+  const libraryUseRef = useRef(null);                  // 从视频生成进入库时，保留当前输入卡的模板回填函数
   const [, setTick] = useState(0);                    // 任务状态变化（模拟生成完成）时刷新
   const genTimers = useRef([]);
   useEffect(() => () => genTimers.current.forEach(clearTimeout), []);
@@ -310,8 +313,66 @@ export default function EmbedApp() {
     window.parent.postMessage({ type: 'selva-clone-nav', section: 'toolbox' }, '*');
   };
 
+  const openViralLibrary = (tag = '全部', onUse = null) => {
+    libraryUseRef.current = onUse;
+    setLibraryTag(tag || '全部');
+    setView('library');
+    setCloneOpen(true);
+    window.parent.postMessage({ type: 'selva-clone-nav', section: 'viral-library' }, '*');
+  };
+
+  /* 爆款库详情快捷入口：把这条片子当成用户刚上传的基准，走进现有克隆 / 裂变。
+     不灌提示词（那是视频生成「用这条」的事），也不跳过上传之后的步骤。 */
+  const startLibraryTool = (tool) => {
+    libraryUseRef.current = null;
+    setEditSeed(prev => ({
+      taskId: null,
+      videoUrl: 'test-clip.mp4',
+      promptHtml: null,
+      sourceText: '',
+      images: [],
+      refVideos: [],
+      refAudios: [],
+      count: 4,
+      model: null,
+      aspect: '9:16',
+      outDuration: null,
+      magic: 'auto',
+      fanoutFrom: null,
+      regions: null,
+      fromLibrary: true,
+      step: 0,
+      seq: (prev ? prev.seq : 0) + 1,
+    }));
+    setFlowType(tool);
+    setView('flow');
+    setCloneOpen(true);
+    window.parent.postMessage({ type: 'selva-clone-nav', section: 'toolbox' }, '*');
+  };
+
+  const useViralTemplate = (item) => {
+    if (libraryUseRef.current) {
+      libraryUseRef.current(item);
+      libraryUseRef.current = null;
+    } else {
+      setEditSeed({
+        taskId: null,
+        sourceText: item.prompt,
+        images: [], refVideos: [], refAudios: [],
+        count: 4, model: null, aspect: '9:16', outDuration: null, magic: 'auto',
+        seq: (editSeed ? editSeed.seq : 0) + 1,
+      });
+    }
+    setFlowType('vgen');
+    setView('flow');
+    setCloneOpen(true);
+    requestAnimationFrame(() => document.querySelector('.composer-input--rich')?.focus());
+    window.parent.postMessage({ type: 'selva-clone-nav', section: 'toolbox' }, '*');
+  };
+
   useEffect(() => {
     const onMsg = (e) => {
+      if (e.source !== window.parent) return;
       const t = e.data && e.data.type;
       /* 宿主灌种子任务：只补本地没有的，不覆盖本次会话真提交过的同 id 任务
          （种子是"历史任务"的快照，用户在本次会话里对它做的任何事都更新鲜） */
@@ -327,7 +388,15 @@ export default function EmbedApp() {
       if (t === 'selva-clone-open') { setFlowType('clone'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-vgen-open') { setFlowType('vgen'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-vfanout-open') { setFlowType('fanout'); setView('flow'); setCloneOpen(true); }
-      if (t === 'selva-clone-hide') setCloneOpen(false);
+      if (t === 'selva-hot-library-open') {
+        setLibraryTag(e.data.initialTag || '全部');
+        setView('library');
+        setCloneOpen(true);
+      }
+      if (t === 'selva-clone-hide') {
+        libraryUseRef.current = null;
+        setCloneOpen(false);
+      }
       if (t === 'selva-clone-open-task') {
         const id = e.data.id;
         const task = taskStore.find(x => x.id === id);
@@ -356,15 +425,19 @@ export default function EmbedApp() {
 
   return (
     <>
-      {view === 'flow' && cloneOpen && (
-          flowType === 'vgen' ? (
+      {(view === 'flow' || view === 'library') && cloneOpen && (
+        <div className="embed-flow-layer" inert={view === 'library'} aria-hidden={view === 'library'}>
+          {flowType === 'vgen' ? (
           <VideoGenModal
             key={`${cloneKey}:${editSeed ? editSeed.seq : 0}`}
-            visible={cloneOpen && view === 'flow'}
+            visible={cloneOpen}
             embedded
             onClose={closeClone}
             onRestart={resetFlow}
             onSubmitTask={submitTask}
+            onOpenLibrary={openViralLibrary}
+            onStartClone={() => startLibraryTool('clone')}
+            onStartFanout={() => startLibraryTool('fanout')}
             initialSourceText={editSeed ? editSeed.sourceText : ''}
             initialImages={editSeed ? editSeed.images : null}
             initialVideos={editSeed ? editSeed.refVideos : null}
@@ -384,7 +457,7 @@ export default function EmbedApp() {
             onRestart={resetFlow}
             onSubmitTask={submitTask}
             initialVideoUrl={editSeed ? editSeed.videoUrl : null}
-            initialFanout={editSeed ? {
+            initialFanout={editSeed && !editSeed.fromLibrary ? {
               steer: editSeed.fanoutFrom?.steer || '',
               preset: editSeed.fanoutFrom?.preset || (editSeed.magic === 'auto' ? 'basic' : null),
               count: editSeed.count,
@@ -403,12 +476,22 @@ export default function EmbedApp() {
             onClose={closeClone}
             onRestart={resetFlow}
             onSubmitTask={submitTask}
-            initialStep={editSeed ? 2 : 0}
+            initialStep={editSeed?.fromLibrary ? 0 : (editSeed ? 2 : 0)}
             initialVideoUrl={editSeed ? editSeed.videoUrl : null}
             initialPromptHtml={editSeed ? editSeed.promptHtml : null}
             initialTaskId={editSeed ? editSeed.taskId : null}
           />
-        )
+        )}
+        </div>
+      )}
+      {view === 'library' && cloneOpen && (
+        <ViralLibraryPage
+          standalone
+          initialTag={libraryTag}
+          onUse={useViralTemplate}
+          onClone={() => startLibraryTool('clone')}
+          onFanout={() => startLibraryTool('fanout')}
+        />
       )}
       {view === 'task' && cloneOpen && curTask && (
         (curTask.toolName === '视频生成' || curTask.toolName === '视频裂变') ? (

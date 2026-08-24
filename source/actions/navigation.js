@@ -2,16 +2,23 @@
 function goPage(page) {
   currentPage = page;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item[data-page], #workspace-nav .nav-item[data-ws-section]').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.nav-item[data-page], #workspace-nav .nav-item[data-ws-section]').forEach(n => {
+    n.classList.remove('active');
+    n.removeAttribute('aria-current');
+  });
   const el = document.getElementById('page-' + page);
   if (el) { el.classList.add('active'); el.classList.add('fade-in'); }
   const nav = document.querySelector(`.nav-item[data-page="${page}"]`);
-  if (nav) nav.classList.add('active');
+  if (nav) {
+    nav.classList.add('active');
+    nav.setAttribute('aria-current', 'page');
+  }
 
   if (page === 'projects') renderProjects();
   if (page === 'dashboard') renderDashboard();
   if (page === 'folder') renderFolder();
   if (page === 'workspace') renderWorkspace();
+  if (page === 'viral-library') openViralLibraryTool();
   if (page === 'library') renderLibrary();
   if (page === 'tasks') renderTaskCenter();
   if (page === 'assets-center') renderAssetsCenter();

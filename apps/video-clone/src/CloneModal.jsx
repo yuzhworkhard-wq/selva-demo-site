@@ -62,7 +62,7 @@ export function CloneModal({
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
   const [targetRegion, setTargetRegion] = useState('巴西 (pt-BR)');
-  const [videoFile, setVideoFile] = useState(null); // 上传的视频文件（提升，返回裁剪步骤后仍保留）
+  const [videoFile, setVideoFile] = useState(initialVideoUrl ? { name: '已保存的基准视频' } : null); // 库入口 / 重新编辑：有预填视频就当上传完成
   const [videoUrl, setVideoUrl] = useState(initialVideoUrl);   // 对应对象 URL，供裁剪步骤播放
 
   // 中断退出/切换：有进度则保留会话（App 只隐藏不卸载），下次进入弹「是否继续」；流程完成则清会话

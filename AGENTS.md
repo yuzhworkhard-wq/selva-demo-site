@@ -19,3 +19,13 @@ If you're using Codex or another agent-capable tool, additional project-scoped h
 Managed by Trellis. Edits outside this block are preserved; edits inside may be overwritten by a future `trellis update`.
 
 <!-- TRELLIS:END -->
+
+# Demo and sync (always)
+
+The user reviews **only** the main-site demo: `site/` via `./scripts/serve.sh` (http://localhost:8123/), entering tools from the platform. Do not demo `apps/video-clone` with `npm run dev` (localhost:5180).
+
+Work is not done until the main site is updated:
+
+- Changes in `apps/video-clone/src/` require `npm run build` so artifacts land in `site/clone/` and sync to `source/clone/`.
+- Changes in `site/` must be mirrored in `source/`.
+- Do not say the change is finished if only the sub-app source changed.

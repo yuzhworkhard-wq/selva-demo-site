@@ -1512,6 +1512,7 @@ function openToolDetail(toolId) {
 // ===== 视频克隆与生成工具：clone/ 下的独立应用，全屏 iframe 承载 =====
 // 关闭只隐藏不销毁 iframe：中断退出的进度留在子应用里，再次打开由它弹「是否继续」
 let pendingCloneFlowType = 'selva-clone-open';
+let pendingViralLibraryTag = '全部';
 function ensureCloneFrame() {
   let overlay = document.getElementById('cloneToolOverlay');
   if (!overlay) {
@@ -1519,7 +1520,7 @@ function ensureCloneFrame() {
     overlay.id = 'cloneToolOverlay';
     overlay.className = 'clone-tool-overlay';
     overlay.style.display = 'none';
-    overlay.innerHTML = '<iframe class="clone-tool-frame" src="clone/index.html?embed=1" title="视频克隆"></iframe>';
+    overlay.innerHTML = '<iframe class="clone-tool-frame" src="clone/index.html?embed=1" title="视频创作工具"></iframe>';
     document.body.appendChild(overlay);
   }
   return overlay;
@@ -1545,6 +1546,16 @@ function openVideoFanoutTool() {
   overlay.style.display = 'block';
   const frame = overlay.querySelector('iframe');
   if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-vfanout-open' }, '*');
+}
+function openViralLibraryTool(initialTag = '全部') {
+  pendingCloneFlowType = 'selva-hot-library-open';
+  pendingViralLibraryTag = initialTag || '全部';
+  const overlay = ensureCloneFrame();
+  overlay.style.display = 'block';
+  const frame = overlay.querySelector('iframe');
+  if (frame && frame.contentWindow) {
+    frame.contentWindow.postMessage({ type: 'selva-hot-library-open', initialTag: pendingViralLibraryTag }, '*');
+  }
 }
 // 页面空闲时预载克隆子应用（下载/挂载成本移到点击之前，点开即显示）
 window.addEventListener('load', () => {
@@ -1619,6 +1630,8 @@ function setCloneSidebarScrim(open) {
 }
 window.addEventListener('message', (e) => {
   if (!e.data) return;
+  const cloneFrameWindow = document.querySelector('#cloneToolOverlay iframe')?.contentWindow;
+  if (!cloneFrameWindow || e.source !== cloneFrameWindow) return;
   if (e.data.type === 'selva-clone-close') hideCloneTool();
   /* 子应用挂载完成后主动来要：种子「视频生成」任务的详情也在它那儿看，
      而它的任务表是自己的内存，看不到平台 MOCK_TASKS。
@@ -1627,7 +1640,7 @@ window.addEventListener('message', (e) => {
     const frame = document.querySelector('#cloneToolOverlay iframe');
     if (frame && frame.contentWindow) {
       frame.contentWindow.postMessage({ type: 'selva-clone-seed', tasks: buildVGenTaskSeeds() }, '*');
-      frame.contentWindow.postMessage({ type: pendingCloneFlowType }, '*');
+      frame.contentWindow.postMessage({ type: pendingCloneFlowType, initialTag: pendingViralLibraryTag }, '*');
     }
   }
   if (e.data.type === 'selva-clone-task' && e.data.task) upsertCloneTask(e.data.task);
@@ -1638,6 +1651,9 @@ window.addEventListener('message', (e) => {
       goPage('workspace');
       setWorkspaceSection('toolbox');
     }
+  }
+  if (e.data.type === 'selva-clone-nav' && e.data.section === 'viral-library') {
+    goPage('viral-library');
   }
 });
 // 蒙层只盖内容区、侧边栏保持可用：克隆打开时点侧边栏任意导航 = 切换走（隐藏保会话）

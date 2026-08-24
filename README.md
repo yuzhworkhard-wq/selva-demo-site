@@ -11,6 +11,9 @@ SELVA 平台 demo 的**唯一**开发与发布仓库。所有改动都在这里�
 
 ## Update flow
 
+验收只看主仓整体 demo：`site/`（`./scripts/serve.sh` → http://localhost:8123/），从平台里点进工具。
+`apps/video-clone` 的 `npm run dev`（localhost:5180）只给开发自测，**不要拿给用户看**。子应用改完但没 `npm run build` 进 `site/clone/`，不算改好了。
+
 ### 平台本体（纯 JS，无构建）
 
 1. 改 `site/` 下的 `app.js` / `data.js` / `state.js` / `render/` / `actions/` / `styles.css`。
@@ -21,11 +24,11 @@ SELVA 平台 demo 的**唯一**开发与发布仓库。所有改动都在这里�
 
 1. 改 `apps/video-clone/src/`。
 2. `cd apps/video-clone && npm run build` —— 产物直接落 `site/clone/`，并自动同步到 `source/clone/`。
-3. 本地看效果：`npm run dev`（子应用独立跑），或用下面的 `./scripts/serve.sh` 从平台里点进去。
+3. 给用户看效果：只用 `./scripts/serve.sh`，从平台里点进去。不要打开子应用独立页当演示。
 
 ## 本地预览
 
-    ./scripts/serve.sh          # → http://localhost:8123/
+    ./scripts/serve.sh          # → http://localhost:8123/  （验收用这个）
 
 **不要用 `python3 -m http.server`**：它不发 no-cache 头，浏览器会缓存 `render/*.js` 和 iframe 里的
 `clone/index.html`，改完刷新还是旧界面，看着像"改动没生效"（已经因此误判过两次）。

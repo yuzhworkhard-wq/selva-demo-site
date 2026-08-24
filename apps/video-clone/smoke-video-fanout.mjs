@@ -20,7 +20,7 @@ check(dialog.includes('<Stepper value={count} onChange={setCount} max={4}'), '�
 check(dialog.includes('每地区最多 4 条'), '裂变界面明确展示地区级条数上限');
 check((regionConfig.match(/value:/g) || []).length === 29, '地区配置与国家地区后缀表保持 29 个地区');
 check(!regionConfig.includes('label: \'印度\''), '地区配置使用文档地区集合');
-check(read('src/RegionMultiSelect.jsx').includes('region.value.toUpperCase()'), '地区菜单仅展示国家名称与后缀');
+check(read('src/RegionMultiSelect.jsx').includes('RegionPickerPanel'), '裂变目标地区复用共用搜索分组面板');
 check(dialog.includes('export function FanoutPanel'), '任务详情裂变核心导出为共享 FanoutPanel');
 check(dialog.includes('return <FanoutPanel {...props} modal />'), '任务详情弹窗复用共享 FanoutPanel');
 
