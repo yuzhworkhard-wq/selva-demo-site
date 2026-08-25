@@ -67,6 +67,14 @@ export function formatSpend(n) {
   return `$${v}`;
 }
 
+/** demo：按近 7 日消耗排名推导 40–99 热度分（展示区左上角火焰 chip）。 */
+export function deriveHeatScore(spend7d, rank = 0) {
+  const spend = Number(spend7d) || 0;
+  const base = 70 - (Number(rank) || 0) * 2;
+  const bump = spend > 0 ? spend % 5 : 0;
+  return Math.min(99, Math.max(40, base + bump));
+}
+
 /** demo：从近 7 日消耗推导今日消耗，保证同一条素材每次展示一致。 */
 export function deriveTodaySpend(spend7d) {
   const spend = Number(spend7d) || 0;

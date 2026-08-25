@@ -5083,12 +5083,6 @@ body {
   opacity: 0; transition: opacity 200ms ease; pointer-events: none;
 }
 .hot-card-video.is-visible { opacity: 1; }
-.hot-new {
-  position: absolute; left: 8px; top: 8px; z-index: 3;
-  display: inline-flex; align-items: center; justify-content: center;
-  min-height: 20px; padding: 3px 7px; border-radius: 6px; background: var(--accent);
-  font-size: 10px; font-weight: 700; color: #fff; letter-spacing: 0.02em; line-height: 1;
-}
 .hot-type {
   position: absolute; left: 8px; bottom: 8px; z-index: 2;
   display: inline-flex; align-items: center; justify-content: center;
@@ -5108,25 +5102,34 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
 }
 .hot-fav-btn {
-  position: absolute; right: 8px; top: 8px; z-index: 5;
+  position: absolute; right: 6px; top: 6px; z-index: 5;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; padding: 0; border: none; border-radius: 8px;
+  width: 22px; height: 22px; padding: 0; border: none; border-radius: 4px;
   background: rgba(0, 0, 0, 0.55); color: #fff; cursor: pointer;
   opacity: 0; pointer-events: none;
-  transition: opacity 150ms ease, background 150ms ease, transform 150ms ease, color 150ms ease;
+  transition: opacity 150ms ease, background 150ms ease, color 150ms ease;
 }
 .hot-card:hover .hot-fav-btn,
 .hot-card:focus-within .hot-fav-btn,
 .hot-fav-btn:focus-visible {
   opacity: 1; pointer-events: auto;
 }
-.hot-fav-btn:hover { background: rgba(0, 0, 0, 0.72); transform: scale(1.05); }
+.hot-fav-btn:hover { background: rgba(0, 0, 0, 0.72); }
 .hot-fav-btn.is-faved { background: var(--accent); color: #fff; }
 .hot-fav-btn.is-faved:hover { background: var(--accent-hover); }
 .hot-fav-btn:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+/* 库页宫格卡更大，hover 收藏 icon 单独放大，与卡片比例匹配 */
+.hot-card:not(.hot-card--immersive) .hot-fav-btn {
+  width: 28px; height: 28px;
+  right: 8px; top: 8px;
+  border-radius: 5px;
+}
+.hot-card:not(.hot-card--immersive) .hot-fav-btn svg {
+  width: 13px; height: 13px;
+}
 .hot-fav-btn--inline {
   position: static; flex-shrink: 0;
-  width: 32px; height: 32px;
+  width: 22px; height: 22px;
   opacity: 0; pointer-events: none;
 }
 .lib-list-row:hover .hot-fav-btn--inline,
@@ -5171,6 +5174,101 @@ body {
   display: flex; align-items: center; justify-content: center; gap: 4px;
   margin: 0 9px 9px; padding: 6px 0;
   border-radius: 7px; background: var(--accent); color: #fff; font-size: 11.5px; font-weight: 600;
+}
+
+/* 视频生成下方：全铺画面。不带来源 / 产品名 / 行业；消耗写清「近7日」；悬停才出做相似。 */
+.hot-card--immersive {
+  display: block; height: auto; aspect-ratio: 9 / 16; align-self: start;
+  border: none; background: var(--bg-page); cursor: default;
+}
+.hot-card--immersive:hover {
+  transform: none; border-color: transparent;
+}
+.hot-card--immersive .hot-card-media {
+  position: absolute; inset: 0; aspect-ratio: auto; height: 100%;
+}
+.hot-chip-row {
+  position: absolute; left: 6px; top: 6px; z-index: 3;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  max-width: calc(100% - 72px); pointer-events: none;
+}
+.hot-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 6px; border-radius: 4px;
+  background: rgba(0, 0, 0, 0.42); color: #fff;
+  font-size: 10px; font-weight: 600; line-height: 1.2;
+  letter-spacing: 0.01em; white-space: nowrap;
+  backdrop-filter: blur(6px);
+}
+.hot-chip--heat { font-variant-numeric: tabular-nums; }
+.hot-chip--heat svg { flex-shrink: 0; color: #ff7043; }
+.hot-card-tr {
+  position: absolute; right: 6px; top: 6px; z-index: 5;
+}
+.hot-chip--src {
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+.hot-chip--src svg { flex-shrink: 0; opacity: 0.88; }
+.hot-fav-btn--immersive {
+  position: absolute; right: 0; top: 0;
+  opacity: 0; pointer-events: none;
+}
+.hot-card--immersive:hover .hot-chip--src,
+.hot-card--immersive:focus-within .hot-chip--src {
+  opacity: 0;
+}
+.hot-card--immersive:hover .hot-fav-btn--immersive,
+.hot-card--immersive:focus-within .hot-fav-btn--immersive,
+.hot-fav-btn--immersive:focus-visible {
+  opacity: 1; pointer-events: auto;
+}
+.hot-card-scrim {
+  position: absolute; inset: auto 0 0; z-index: 4; height: 34%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.78), transparent);
+  opacity: 0; pointer-events: none;
+  transition: opacity 180ms ease;
+}
+.hot-card-pick {
+  position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 5;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 28px; padding: 0 10px; border: none; border-radius: 6px;
+  background: var(--accent); color: #fff;
+  font: 600 11.5px/1 var(--font); cursor: pointer;
+  opacity: 0; pointer-events: none;
+  transform: translateY(3px);
+  transition: opacity 180ms ease, transform 180ms ease, background 150ms ease;
+  touch-action: manipulation;
+}
+.hot-card--immersive:hover .hot-card-scrim,
+.hot-card--immersive:focus-within .hot-card-scrim {
+  opacity: 1;
+}
+.hot-card--immersive:hover .hot-card-pick,
+.hot-card--immersive:focus-within .hot-card-pick,
+.hot-card-pick:focus-visible {
+  opacity: 1; pointer-events: auto; transform: none;
+}
+.hot-card-pick:hover { background: var(--accent-hover); }
+.hot-card-pick:active { background: #5050e8; }
+.hot-card-pick:focus-visible {
+  outline: 2px solid var(--accent-hover); outline-offset: 2px;
+}
+@media (hover: none) {
+  .hot-card-scrim,
+  .hot-card-pick {
+    opacity: 1; pointer-events: auto; transform: none;
+  }
+  .hot-card--immersive .hot-chip--src { opacity: 0; }
+  .hot-fav-btn--immersive {
+    opacity: 1; pointer-events: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hot-card-scrim,
+  .hot-card-pick {
+    transition: none; transform: none;
+  }
 }
 
 /* ══ 全屏爆款库 ══ */
@@ -5398,6 +5496,10 @@ body {
 .lib-list-main b { font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .lib-list-main em { font-style: normal; font-size: 11.5px; color: var(--text-muted); }
 .lib-list-date { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.lib-list-actions {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; flex-shrink: 0;
+}
 .lib-sort { display: inline-flex; gap: 2px; flex-shrink: 0; padding: 3px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 9px; }
 .lib-sort-btn {
   display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px;
@@ -5441,9 +5543,11 @@ body {
   overflow: hidden;
 }
 .lib-page--preview .lib-list-row {
-  grid-template-columns: 52px minmax(0, 1fr) 80px 90px;
+  grid-template-columns: 52px minmax(0, 1fr) 80px 36px;
 }
-.lib-page--preview .lib-list-row span:nth-child(n+5) { display: none; }
+.lib-page--preview .lib-list-spec,
+.lib-page--preview .lib-list-spend,
+.lib-page--preview .lib-list-date { display: none; }
 .lib-preview {
   display: flex;
   flex-direction: column;
@@ -5688,8 +5792,11 @@ body {
   .lib-page--preview .hot-grid--dense { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
   .lib-page--preview .hot-card { max-width: 200px; }
   .composer-bar { flex-wrap: wrap; }
-  .lib-list-row { grid-template-columns: 52px minmax(0, 1fr) 70px; }
-  .lib-list-row span:nth-child(n+4) { display: none; }
+  .lib-list-row { grid-template-columns: 52px minmax(0, 1fr) 36px; }
+  .lib-list-region,
+  .lib-list-spec,
+  .lib-list-spend,
+  .lib-list-date { display: none; }
 }
 @media (max-width: 700px) {
   .lib-page { padding: 24px 16px 0; }

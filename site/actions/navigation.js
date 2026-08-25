@@ -1,5 +1,5 @@
 // ===== Navigation =====
-function goPage(page) {
+function goPage(page, opts) {
   currentPage = page;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item[data-page], #workspace-nav .nav-item[data-ws-section]').forEach(n => {
@@ -18,7 +18,16 @@ function goPage(page) {
   if (page === 'dashboard') renderDashboard();
   if (page === 'folder') renderFolder();
   if (page === 'workspace') renderWorkspace();
-  if (page === 'viral-library') openViralLibraryTool();
+  if (page === 'viral-library') {
+    /* 视频生成「查看全部」已经在子应用里打开库页并带上 TikTok/Kwai。
+       这里只高亮侧栏，不要再发 selva-hot-library-open，否则会把渠道打回 TikTok。 */
+    if (opts && opts.skipViralLibraryEmbed) {
+      const overlay = typeof ensureCloneFrame === 'function' ? ensureCloneFrame() : document.getElementById('cloneToolOverlay');
+      if (overlay) overlay.style.display = 'block';
+    } else {
+      openViralLibraryTool();
+    }
+  }
   if (page === 'library') renderLibrary();
   if (page === 'tasks') renderTaskCenter();
   if (page === 'assets-center') renderAssetsCenter();

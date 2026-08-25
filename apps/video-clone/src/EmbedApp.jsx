@@ -6,6 +6,7 @@ import { CloneTaskDetail } from './CloneTaskDetail';
 import { VideoGenTaskDetail } from './VideoGenTaskDetail';
 import { buildFanoutScripts, buildVariantScripts, readVideoDims, FANOUT_DIMS } from './briefParser';
 import { normalizeRegions } from './videoRegionConfig.mjs';
+import { SOURCES } from './viralLibrary.mjs';
 import './styles.css';
 
 /* 嵌入模式（?embed）：宿主平台用 iframe 承载克隆功能（工具箱入口＝克隆流程，任务中心入口＝任务详情）。
@@ -16,7 +17,7 @@ import './styles.css';
    父 → 子 {type:'selva-clone-open'}                      从工具箱打开克隆流程
    父 → 子 {type:'selva-vgen-open'}                       从工具箱打开视频生成流程
    父 → 子 {type:'selva-vfanout-open'}                    从工具箱打开视频裂变流程
-   父 → 子 {type:'selva-hot-library-open', initialTag}     从平台一级菜单打开爆款视频库
+   父 → 子 {type:'selva-hot-library-open', initialTag, initialSource?}  从平台一级菜单打开爆款视频库；无 initialSource 时渠道默认 TikTok
    父 → 子 {type:'selva-clone-hide'}                      宿主侧栏切换走（暂停视频、标记关闭态）
    父 → 子 {type:'selva-clone-open-task', id}             从任务中心打开任务详情
    父 → 子 {type:'selva-clone-seed', tasks:[...]}         平台里那些「早于本次会话」的视频生成任务，
@@ -138,6 +139,7 @@ export default function EmbedApp() {
   const [taskId, setTaskId] = useState(null);
   const [editSeed, setEditSeed] = useState(null);     // 「重新编辑」注入：{taskId, videoUrl, promptHtml, seq}
   const [libraryTag, setLibraryTag] = useState('全部');
+  const [librarySource, setLibrarySource] = useState('TikTok');
   const libraryUseRef = useRef(null);                  // 从视频生成进入库时，保留当前输入卡的模板回填函数
   const [, setTick] = useState(0);                    // 任务状态变化（模拟生成完成）时刷新
   const genTimers = useRef([]);
@@ -313,16 +315,18 @@ export default function EmbedApp() {
     window.parent.postMessage({ type: 'selva-clone-nav', section: 'toolbox' }, '*');
   };
 
-  const openViralLibrary = (tag = '全部', onUse = null) => {
+  const openViralLibrary = (tag = '全部', onUse = null, source = 'TikTok') => {
+    const nextSource = SOURCES.includes(source) ? source : 'TikTok';
     libraryUseRef.current = onUse;
     setLibraryTag(tag || '全部');
+    setLibrarySource(nextSource);
     setView('library');
     setCloneOpen(true);
-    window.parent.postMessage({ type: 'selva-clone-nav', section: 'viral-library' }, '*');
+    window.parent.postMessage({ type: 'selva-clone-nav', section: 'viral-library', source: nextSource }, '*');
   };
 
   /* 爆款库详情快捷入口：把这条片子当成用户刚上传的基准，走进现有克隆 / 裂变。
-     不灌提示词（那是视频生成「用这条」的事），也不跳过上传之后的步骤。 */
+     不灌提示词（那是视频生成「做相似」的事），也不跳过上传之后的步骤。 */
   const startLibraryTool = (tool) => {
     libraryUseRef.current = null;
     setEditSeed(prev => ({
@@ -390,6 +394,7 @@ export default function EmbedApp() {
       if (t === 'selva-vfanout-open') { setFlowType('fanout'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-hot-library-open') {
         setLibraryTag(e.data.initialTag || '全部');
+        setLibrarySource(e.data.initialSource === 'Kwai' ? 'Kwai' : 'TikTok');
         setView('library');
         setCloneOpen(true);
       }
@@ -488,6 +493,7 @@ export default function EmbedApp() {
         <ViralLibraryPage
           standalone
           initialTag={libraryTag}
+          initialSource={librarySource}
           onUse={useViralTemplate}
           onClone={() => startLibraryTool('clone')}
           onFanout={() => startLibraryTool('fanout')}

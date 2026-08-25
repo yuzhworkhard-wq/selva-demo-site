@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import {
   INDUSTRIES, SOURCES, VIDEO_TYPES, REGIONS, DURATION_BANDS, SIZES, CREATED_BANDS,
-  CAL_WEEKDAYS, formatSpend, filterLibrary, sortLibrary, filterFavorites,
+  CAL_WEEKDAYS, formatSpend, deriveHeatScore, filterLibrary, sortLibrary, filterFavorites,
   toggleFavoriteId, loadFavoriteIds, saveFavoriteIds, FAVORITES_STORAGE_KEY,
   inCreatedWindow, toIsoDate, monthGrid,
   parseSpendBound, inSpendRange,
@@ -77,10 +77,16 @@ check(filterLibrary(
   [{ product: 'today', source: 'TikTok', days: 0 }, { product: 'old', source: 'TikTok', days: 2 }],
   { source: 'TikTok', created: '今天' },
 ).map(x => x.product).join() === 'today', '今天只保留当天上传素材');
+check(filterLibrary(SAMPLE, { source: 'TikTok', created: '' }).length === 3,
+  'created 空串不过滤上传时间，展示区才能按近 7 日消耗取全量');
+check(filterLibrary(SAMPLE, { source: 'Kwai', created: '' }).map(x => x.product).join() === 'CashDrama',
+  '展示区按渠道过滤时 created 空串仍只留该渠道');
 
 check(formatSpend(42800) === '$43k', '消耗金额格式化为千美元');
 check(formatSpend(9400) === '$9.4k', '不足一万保留一位小数');
 check(formatSpend(900) === '$900', '不足一千显示原值');
+check(deriveHeatScore(42800, 0) >= deriveHeatScore(42800, 3), '热度分随排名递减');
+check(deriveHeatScore(0, 0) >= 40 && deriveHeatScore(99999, 0) <= 99, '热度分落在 40–99');
 
 check(parseSpendBound('') === null && parseSpendBound('   ') === null, '空消耗边界视为无界');
 check(parseSpendBound('10k') === 10000 && parseSpendBound('10K') === 10000, 'k 后缀乘 1000');
@@ -214,6 +220,57 @@ check(videoGen.includes('hot-dur-center'), '时长 badge 居中展示');
 check(videoGen.includes('hot-card-video'), '卡片 hover 可加载播放视频');
 check(videoGen.includes("useState('TikTok')"), '视频来源默认 TikTok');
 check(videoGen.includes("useState('今天')"), '创建时间默认今天');
+const showcaseFn = videoGen.slice(
+  videoGen.indexOf('function HotShowcase'),
+  videoGen.indexOf('export function ViralLibraryPage'),
+);
+check(showcaseFn.includes('function HotShowcase'), '能切出视频生成下方展示区');
+check(showcaseFn.includes('SOURCES.map'), '视频生成下方只按 TikTok / Kwai 分渠道');
+check(!showcaseFn.includes('INDUSTRIES'), '视频生成下方不用行业分类 chip');
+check(showcaseFn.includes('aria-label="投放渠道"'), '渠道 chip 对辅助技术可见');
+check(showcaseFn.includes('layout="immersive"'), '视频生成下方用全铺卡片，不跟库页同一套');
+check(showcaseFn.includes('做相似'), '悬停后用做相似把提示词灌进输入框');
+check(showcaseFn.includes("created: '近 7 天'"), '展示区只取近 7 日消耗最高');
+check(videoGen.includes('HOT_PREVIEW_COUNT = 14'), '展示区固定展示 14 条');
+check(showcaseFn.includes('onOpenLibrary(source)'), '查看全部带上当前渠道');
+check(!showcaseFn.includes('actionLabel="用这条"'), '展示区悬停才出现做相似按钮');
+check(!showcaseFn.includes('hot-card-head'), '展示区调用不带头信息条');
+check(videoGen.includes("layout === 'immersive'"), '全铺卡片是独立 layout');
+check(videoGen.includes('onClick={immersive ? undefined'), '展示卡本身不灌提示词');
+check(videoGen.includes("onOpenLibrary('全部', handleApplyTemplate, nextSource)"),
+  '打开库页时把渠道交给宿主，行业仍从全部起');
+check(videoGen.includes('hot-chip--heat') && videoGen.includes('formatSpend(item.spend)'),
+  '展示卡左上角火焰 chip 展示近 7 日消耗');
+check(videoGen.includes('hot-chip--src'), '展示卡右上角展示渠道 chip');
+check(videoGen.includes('hot-fav-btn--immersive'), '展示卡 hover 时右上角出现收藏按钮');
+check(/\.hot-card--immersive:hover \.hot-chip--src/.test(styles),
+  '展示卡 hover 时隐藏右上角渠道 chip，与收藏 icon 互换');
+check(!videoGen.includes('hot-card-hover-title'), '展示卡 hover 不展示视频名称');
+check(!showcaseFn.includes('hot-new'), '展示区近 7 日榜单不再打 NEW');
+check(!videoGen.includes('hot-new'), '库页卡片不再打 NEW 标签');
+check(/\.hot-fav-btn\s*\{[^}]*width:\s*22px/.test(styles),
+  '展示卡收藏按钮基准 22px');
+check(/\.hot-card:not\(\.hot-card--immersive\) \.hot-fav-btn\s*\{[^}]*width:\s*28px/.test(styles),
+  '库页宫格卡 hover 收藏 icon 放大至 28px');
+check(videoGen.includes('hot-card-pick'), '做相似按钮只挂在展示卡悬停层');
+check(showcaseFn.includes('onToggleFavorite={toggleFavorite}'), '展示区支持收藏');
+check(videoGen.includes('<span className="hot-card-head">'), '库页卡片仍保留来源 / 产品 / 行业头');
+check(styles.includes('.hot-card--immersive'), '全铺卡片有独立样式');
+check(/\.hot-card--immersive \.hot-card-media\s*\{[^}]*position:\s*absolute/.test(styles),
+  '展示卡视频铺满整张卡');
+check(/\.hot-card--immersive\s*\{[^}]*cursor:\s*default/.test(styles),
+  '展示卡整卡不可点，避免看起来像点卡片灌词');
+check(/\.hot-chip\s*\{[^}]*font-size:\s*10px/.test(styles),
+  '展示卡 chip 使用 10px 小号字');
+check(/\.hot-card-pick\s*\{[^}]*min-height:\s*28px/.test(styles),
+  '做相似按钮更紧凑');
+check(/\.hot-card-pick\s*\{[^}]*bottom:\s*6px/.test(styles),
+  '做相似按钮边距更小');
+check(/@media \(hover: none\) \{\s*\.hot-card-scrim,\s*\.hot-card-pick/.test(styles),
+  '触控设备不只靠悬停才能点做相似');
+check(embed.includes('onUse = null, source = \'TikTok\''), '查看全部把当前渠道传给库页');
+check(embed.includes('initialSource'), '从视频生成查看全部带入当前渠道');
+check(embed.includes('librarySource'), '嵌入页记住展示区选中的渠道');
 check(styles.includes('.lib-segment {'), '分段控件有独立样式');
 check(styles.includes('.hot-card-stats {'), '卡片三列数据区有独立样式');
 check(styles.includes('.hot-dur-center {'), '居中时长 badge 有独立样式');
@@ -263,10 +320,14 @@ check(videoGen.includes('filterFavorites('), '收藏夹 tab 复用 filterFavorit
 check(videoGen.includes('useViralFavorites'), '收藏状态用 hook 统一管理');
 check(styles.includes('.hot-fav-btn {'), '收藏按钮有独立样式');
 check(styles.includes('.hot-fav-btn.is-faved'), '已收藏态高亮样式');
-check(/\.hot-card:hover \.hot-fav-btn/.test(styles), '收藏按钮默认隐藏，悬停卡片时显示');
+check(/\.hot-card:hover \.hot-fav-btn/.test(styles), '库页宫格卡 hover 时显示收藏按钮');
 check(videoGen.includes('formatSpend('), '卡片展示消耗金额');
 check(videoGen.includes('item.product'), '卡片标题用产品名称');
 check(videoGen.includes("view === 'list'"), '库页支持宫格 / 列表切换');
+check(videoGen.includes('lib-list-actions'), '列表行收藏按钮有独立操作列，避免 grid 换行错位');
+check(/\.lib-page--preview \.lib-list-row\s*\{[^}]*grid-template-columns:[^;]*36px/.test(styles),
+  '预览分栏下列表行仍保留收藏操作列');
+check(!styles.includes('.lib-list-row span:nth-child'), '列表行不再用 nth-child 隐藏列');
 check(videoGen.includes('aria-label="爆款视频库分页"'), '爆款视频库分页控件提供可访问名称');
 check(videoGen.includes('slice((currentPage - 1) * LIBRARY_PAGE_SIZE, currentPage * LIBRARY_PAGE_SIZE)'), '爆款视频库按页切分视频列表');
 check(!videoGen.includes('className="lib-title-mark"'), '爆款库标题不显示独立图标');
@@ -367,7 +428,10 @@ check(styles.includes('.lib-filter-selects .idea-pick { overflow: visible; }')
 check(embed.includes("t === 'selva-hot-library-open'"), '嵌入应用响应平台爆款库入口');
 check(embed.includes('e.source !== window.parent'), '嵌入应用只接受宿主窗口消息');
 check(embed.includes("setView('library')"), '嵌入应用提供独立爆款库视图');
-check(embed.includes("section: 'viral-library'"), '视频生成查看全部同步平台侧栏状态');
+check(embed.includes("section: 'viral-library', source: nextSource"),
+  '查看全部把当前渠道带给宿主侧栏同步');
+check(embed.includes("e.data.initialSource === 'Kwai'"),
+  '侧栏打开库页时无 initialSource 则回落到 TikTok，有 Kwai 则保留');
 check(embed.includes("document.querySelector('.composer-input--rich')?.focus()"), '一级菜单模板回填后焦点落到视频生成输入框');
 check(embed.includes('visible={cloneOpen}'), '库页覆盖输入页时保持视频生成会话可见，返回时不误触发恢复弹窗');
 check((embed.match(/visible=\{cloneOpen && view === 'flow'\}/g) || []).length === 2,

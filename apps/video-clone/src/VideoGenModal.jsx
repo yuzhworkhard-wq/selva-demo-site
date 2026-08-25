@@ -3,7 +3,7 @@ import {
   X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Loader2, Check, Clock,
   ArrowLeft, ArrowUp, Plus, Film, Clapperboard, Music, Lock, AlertCircle,
   LayoutGrid, List, Copy, GitBranch, Settings, Wand2, Search, Calendar, DollarSign, Download, Play,
-  Upload, FolderOpen, UserRound, Image as ImageIcon, Bookmark,
+  Upload, FolderOpen, UserRound, Image as ImageIcon, Bookmark, Flame, Share2,
 } from 'lucide-react';
 import { notifyHostModal } from './hostModal';
 import { buildVariantScripts } from './briefParser';
@@ -113,8 +113,9 @@ const MAGIC_OPTIONS = [
 ];
 const MAGIC_LABEL = { auto: '自动', on: '开', off: '关' };
 
-/* ── 爆款视频库：按热度排序的投放素材库。热度＝近 7 日被采用次数（demo 写死）。
-   视频生成第一步点卡片＝把提示词灌进输入框；一级菜单库页点卡片＝打开这条的预览详情。── */
+/* ── 爆款视频库：按近 7 日消耗排序的投放素材库。
+   视频生成第一步：悬停后点「做相似」＝把提示词灌进输入框（展示卡和库页卡不是同一套）。
+   一级菜单库页点卡片＝打开这条的预览详情。── */
 const DEMO_CLIP = 'test-clip.mp4';
 const LIBRARY_PAGE_SIZE = 60;
 const LIB_SORTS = [
@@ -698,7 +699,8 @@ export function VideoGenModal({
     toastTimer.current = setTimeout(() => setToast(null), 3200);
   };
 
-  const [libraryTag, setLibraryTag] = useState(null);   // 非 null = 全屏爆款库开着（值＝进来时选中的分类）
+  const [libraryTag, setLibraryTag] = useState(null);   // 非 null = 全屏爆款库开着（值＝进来时选中的行业）
+  const [librarySource, setLibrarySource] = useState('TikTok');
   const [submitting, setSubmitting] = useState(false);  // 点生成→提交任务中心的短暂过渡
 
   const refs = { image: attachedImages, video: attachedVideos, audio: attachedAudios };
@@ -773,14 +775,18 @@ export function VideoGenModal({
     const ds = modelCfg(m).durations;
     setDuration(d => (ds.includes(d) ? d : ds[0]));
   };
-  // 爆款库点一条＝把它的提示词灌进输入框（封面是成片截图不是参考素材，不自动挂图）
+  // 展示区「做相似」才灌提示词（封面是成片截图不是参考素材，不自动挂图）
   const handleApplyTemplate = (item) => {
     injectText(item.prompt);
     requestAnimationFrame(() => rootRef.current?.querySelector('.composer-input--rich')?.focus());
   };
-  const handleOpenLibrary = (tag) => {
-    if (onOpenLibrary) onOpenLibrary(tag, handleApplyTemplate);
-    else setLibraryTag(tag);
+  const handleOpenLibrary = (source = 'TikTok') => {
+    const nextSource = SOURCES.includes(source) ? source : 'TikTok';
+    if (onOpenLibrary) onOpenLibrary('全部', handleApplyTemplate, nextSource);
+    else {
+      setLibraryTag('全部');
+      setLibrarySource(nextSource);
+    }
   };
 
   /* 生成：脚本在这里一次性配好直接进任务中心，不再让用户过一道预览。
@@ -862,6 +868,7 @@ export function VideoGenModal({
         {libraryTag !== null && (
           <ViralLibraryPage
             initialTag={libraryTag}
+            initialSource={librarySource}
             onUse={handleApplyTemplate}
             onClose={() => setLibraryTag(null)}
             onClone={onStartClone}
@@ -1838,13 +1845,15 @@ function LibraryPreview({ item, onClose, onPrev, onNext, onUse = null, onClone =
   );
 }
 
-/* ── 爆款卡片：来源 + 产品名，缩略图，类型 / 时长 / 消耗。
-   库页点卡片看详情；视频生成第一步点卡片灌提示词。卡片结构两边同一套。── */
+/* ── 爆款卡片
+   库页：来源 + 产品名 + 行业，缩略图，三列消耗数据；点卡片看详情。
+   视频生成下方：全铺画面，只标近 7 日消耗；悬停才出「做相似」灌提示词。── */
 function HotCard({
   item, onUse, onOpen, selected = false, actionLabel = '制作同款', layout = 'action',
   favorited = false, onToggleFavorite = null,
 }) {
   const inspect = typeof onOpen === 'function';
+  const immersive = layout === 'immersive';
   const videoRef = useRef(null);
   const [hovering, setHovering] = useState(false);
 
@@ -1862,12 +1871,18 @@ function HotCard({
     video.pause();
     try { video.currentTime = 0; } catch { /* noop */ }
   };
+  const applyPrompt = (e) => {
+    e.stopPropagation();
+    onUse?.(item);
+  };
 
   return (
-    <div role="button" tabIndex={0}
-      className={`hot-card${selected ? ' selected' : ''}`}
-      onClick={() => (inspect ? onOpen(item) : onUse(item))}
-      onKeyDown={(e) => {
+    <div
+      role={immersive ? undefined : 'button'}
+      tabIndex={immersive ? undefined : 0}
+      className={`hot-card${immersive ? ' hot-card--immersive' : ''}${selected ? ' selected' : ''}`}
+      onClick={immersive ? undefined : () => (inspect ? onOpen(item) : onUse(item))}
+      onKeyDown={immersive ? undefined : (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           inspect ? onOpen(item) : onUse(item);
@@ -1876,17 +1891,23 @@ function HotCard({
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
       onFocus={handleEnter}
-      onBlur={handleLeave}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) handleLeave();
+      }}
       title={item.title}
       aria-pressed={inspect ? selected : undefined}
-      aria-label={inspect
-        ? `${item.product}，${item.source}，消耗 ${formatSpend(item.spend)}，查看详情`
-        : `${item.product}，${item.source}，消耗 ${formatSpend(item.spend)}，${actionLabel}`}>
-      <span className="hot-card-head">
-        <span className="hot-src">{item.source === 'TikTok' ? 'TK' : 'Kwai'}</span>
-        <span className="hot-card-product">{item.product}</span>
-        <span className="hot-card-industry">{item.industry}</span>
-      </span>
+      aria-label={immersive
+        ? undefined
+        : inspect
+          ? `${item.product}，${item.source}，消耗 ${formatSpend(item.spend)}，查看详情`
+          : `${item.product}，${item.source}，消耗 ${formatSpend(item.spend)}，${actionLabel}`}>
+      {!immersive && (
+        <span className="hot-card-head">
+          <span className="hot-src">{item.source === 'TikTok' ? 'TK' : 'Kwai'}</span>
+          <span className="hot-card-product">{item.product}</span>
+          <span className="hot-card-industry">{item.industry}</span>
+        </span>
+      )}
       <span className="hot-card-media">
         <img src={item.cover} alt="" className={`hot-card-cover${hovering ? ' is-hidden' : ''}`} loading="lazy" />
         <video
@@ -1900,22 +1921,58 @@ function HotCard({
           className={`hot-card-video${hovering ? ' is-visible' : ''}`}
           aria-hidden="true"
         />
-        {item.days <= 3 && <span className="hot-new">NEW</span>}
-        {onToggleFavorite && (
+        {immersive ? (
+          <>
+            <span className="hot-chip-row" aria-hidden="true">
+              <span className="hot-chip hot-chip--heat">
+                <Flame size={10} strokeWidth={2.4} aria-hidden="true" />
+                {formatSpend(item.spend)}
+              </span>
+            </span>
+            <span className="hot-card-tr">
+              <span className="hot-chip hot-chip--src" aria-hidden="true">
+                <Share2 size={9} strokeWidth={2.2} aria-hidden="true" />
+                {item.source}
+              </span>
+              {onToggleFavorite && (
+                <button type="button"
+                  className={`hot-fav-btn hot-fav-btn--immersive${favorited ? ' is-faved' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); onToggleFavorite(item.id); }}
+                  aria-pressed={favorited}
+                  aria-label={favorited ? `取消收藏 ${item.product}` : `收藏 ${item.product}`}
+                  title={favorited ? '取消收藏' : '收藏'}>
+                  <Bookmark size={12} strokeWidth={2} fill={favorited ? 'currentColor' : 'none'} />
+                </button>
+              )}
+            </span>
+          </>
+        ) : null}
+        {onToggleFavorite && !immersive && (
           <button type="button"
             className={`hot-fav-btn${favorited ? ' is-faved' : ''}`}
             onClick={(e) => { e.stopPropagation(); onToggleFavorite(item.id); }}
             aria-pressed={favorited}
             aria-label={favorited ? `取消收藏 ${item.product}` : `收藏 ${item.product}`}
             title={favorited ? '取消收藏' : '收藏'}>
-            <Bookmark size={14} strokeWidth={2} fill={favorited ? 'currentColor' : 'none'} />
+            <Bookmark size={12} strokeWidth={2} fill={favorited ? 'currentColor' : 'none'} />
           </button>
         )}
-        <span className="hot-type">{item.type}</span>
-        <span className="hot-dur-center" aria-hidden="true">
-          <Play size={11} fill="currentColor" strokeWidth={0} />
-          {item.duration}s
-        </span>
+        {!immersive && <span className="hot-type">{item.type}</span>}
+        {!immersive && (
+          <span className="hot-dur-center" aria-hidden="true">
+            <Play size={11} fill="currentColor" strokeWidth={0} />
+            {item.duration}s
+          </span>
+        )}
+        {immersive && (
+          <>
+            <span className="hot-card-scrim" aria-hidden="true" />
+            <button type="button" className="hot-card-pick" onClick={applyPrompt}
+              aria-label={`用「${item.product}」的提示词做相似`}>
+              做相似
+            </button>
+          </>
+        )}
       </span>
       {layout === 'stats' ? (
         <div className="hot-card-stats">
@@ -1932,7 +1989,7 @@ function HotCard({
             <span className="hot-stat-val">{formatUploadDate(item.days)}</span>
           </div>
         </div>
-      ) : (
+      ) : !immersive && (
         <>
           <span className="hot-card-meta">
             <span>{item.region}</span>
@@ -1945,13 +2002,14 @@ function HotCard({
   );
 }
 
-/* ── 第一步下方的爆款区：一屏只露一排半，全部走「查看全部」进库页 ── */
-const HOT_PREVIEW_COUNT = 12;
+/* ── 第一步下方的爆款区：一屏只露一排半，全部走「查看全部」进库页。
+   只按 TikTok / Kwai 分渠道（两边统计口径不同）；卡片是全铺画面，和库页那套不一样。── */
+const HOT_PREVIEW_COUNT = 14;
 function HotShowcase({ onUse, onOpenLibrary }) {
-  const [industry, setIndustry] = useState('全部');
+  const [source, setSource] = useState('TikTok');
   const { toggleFavorite, isFavorited } = useViralFavorites();
   const list = sortLibrary(
-    filterLibrary(SHOWCASE, { industry }),
+    filterLibrary(SHOWCASE, { source, created: '近 7 天' }),
     'spend',
   ).slice(0, HOT_PREVIEW_COUNT);
 
@@ -1960,29 +2018,29 @@ function HotShowcase({ onUse, onOpenLibrary }) {
       <div className="hot-sect-head">
         <div className="hot-sect-head-left">
           <h3 className="hot-sect-title">爆款视频库</h3>
-          <p className="hot-sect-sub">近 7 日消耗最高的投放素材；点一条直接灌进上面的输入框</p>
+          <p className="hot-sect-sub">近 7 日消耗最高的投放素材；悬停后点「做相似」，用这条的提示词去制作</p>
         </div>
-        <button type="button" className="hot-seeall" onClick={() => onOpenLibrary(industry)}>
+        <button type="button" className="hot-seeall" onClick={() => onOpenLibrary(source)}>
           查看全部 <ChevronRight size={15} />
         </button>
       </div>
 
-      <div className="hot-tagrow" role="group" aria-label="行业分类">
-        {INDUSTRIES.map(item => (
-          <button key={item} type="button" className={`hot-tag ${item === industry ? 'active' : ''}`}
-            aria-pressed={item === industry} onClick={() => setIndustry(item)}>{item}</button>
+      <div className="hot-tagrow" role="group" aria-label="投放渠道">
+        {SOURCES.map(item => (
+          <button key={item} type="button" className={`hot-tag ${item === source ? 'active' : ''}`}
+            aria-pressed={item === source} onClick={() => setSource(item)}>{item}</button>
         ))}
       </div>
 
       <div className="hot-grid">
         {list.map(item => (
-          <HotCard key={item.id} item={item} onUse={onUse} actionLabel="用这条"
+          <HotCard key={item.id} item={item} onUse={onUse} layout="immersive"
             favorited={isFavorited(item.id)} onToggleFavorite={toggleFavorite} />
         ))}
       </div>
 
       <div className="hot-sect-foot">
-        <button type="button" className="hot-viewall" onClick={() => onOpenLibrary(industry)}>
+        <button type="button" className="hot-viewall" onClick={() => onOpenLibrary(source)}>
           查看全部<b>爆款视频库</b>
         </button>
       </div>
@@ -1992,11 +2050,11 @@ function HotShowcase({ onUse, onOpenLibrary }) {
 
 /* ── 爆款库详情页：视频生成内与平台一级菜单共用搜索、排序、分类和卡片 ── */
 export function ViralLibraryPage({
-  initialTag = '全部', onUse: _onUse, onClose = null, standalone = false,
+  initialTag = '全部', initialSource = 'TikTok', onUse: _onUse, onClose = null, standalone = false,
   onClone = null, onFanout = null,
 }) {
   const [industry, setIndustry] = useState(initialTag);
-  const [source, setSource] = useState('TikTok');
+  const [source, setSource] = useState(SOURCES.includes(initialSource) ? initialSource : 'TikTok');
   const [type, setType] = useState('全部');
   const [region, setRegion] = useState([]);
   const [duration, setDuration] = useState('全部时长');
@@ -2019,6 +2077,10 @@ export function ViralLibraryPage({
   useEffect(() => {
     setIndustry(initialTag);
   }, [initialTag]);
+
+  useEffect(() => {
+    setSource(SOURCES.includes(initialSource) ? initialSource : 'TikTok');
+  }, [initialSource]);
 
   useEffect(() => {
     setPage(1);
@@ -2195,18 +2257,20 @@ export function ViralLibraryPage({
                       <b>{item.product}</b>
                       <em>{item.source} · {item.industry} · {item.type}</em>
                     </span>
-                    <span>{item.region}</span>
-                    <span>{item.duration}s · {item.size}</span>
-                    <span className="hot-spend">{formatSpend(item.spend)}</span>
+                    <span className="lib-list-region">{item.region}</span>
+                    <span className="lib-list-spec">{item.duration}s · {item.size}</span>
+                    <span className="lib-list-spend hot-spend">{formatSpend(item.spend)}</span>
                     <span className="lib-list-date">创建 {item.days} 天前</span>
-                    <button type="button"
-                      className={`hot-fav-btn hot-fav-btn--inline${isFavorited(item.id) ? ' is-faved' : ''}`}
-                      onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}
-                      aria-pressed={isFavorited(item.id)}
-                      aria-label={isFavorited(item.id) ? `取消收藏 ${item.product}` : `收藏 ${item.product}`}
-                      title={isFavorited(item.id) ? '取消收藏' : '收藏'}>
-                      <Bookmark size={14} strokeWidth={2} fill={isFavorited(item.id) ? 'currentColor' : 'none'} />
-                    </button>
+                    <span className="lib-list-actions">
+                      <button type="button"
+                        className={`hot-fav-btn hot-fav-btn--inline${isFavorited(item.id) ? ' is-faved' : ''}`}
+                        onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}
+                        aria-pressed={isFavorited(item.id)}
+                        aria-label={isFavorited(item.id) ? `取消收藏 ${item.product}` : `收藏 ${item.product}`}
+                        title={isFavorited(item.id) ? '取消收藏' : '收藏'}>
+                        <Bookmark size={12} strokeWidth={2} fill={isFavorited(item.id) ? 'currentColor' : 'none'} />
+                      </button>
+                    </span>
                   </div>
                 ))}
               </div>

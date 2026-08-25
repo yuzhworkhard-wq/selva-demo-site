@@ -1513,6 +1513,7 @@ function openToolDetail(toolId) {
 // 关闭只隐藏不销毁 iframe：中断退出的进度留在子应用里，再次打开由它弹「是否继续」
 let pendingCloneFlowType = 'selva-clone-open';
 let pendingViralLibraryTag = '全部';
+let pendingViralLibrarySource = 'TikTok';
 function ensureCloneFrame() {
   let overlay = document.getElementById('cloneToolOverlay');
   if (!overlay) {
@@ -1550,11 +1551,16 @@ function openVideoFanoutTool() {
 function openViralLibraryTool(initialTag = '全部') {
   pendingCloneFlowType = 'selva-hot-library-open';
   pendingViralLibraryTag = initialTag || '全部';
+  pendingViralLibrarySource = 'TikTok';
   const overlay = ensureCloneFrame();
   overlay.style.display = 'block';
   const frame = overlay.querySelector('iframe');
   if (frame && frame.contentWindow) {
-    frame.contentWindow.postMessage({ type: 'selva-hot-library-open', initialTag: pendingViralLibraryTag }, '*');
+    frame.contentWindow.postMessage({
+      type: 'selva-hot-library-open',
+      initialTag: pendingViralLibraryTag,
+      initialSource: pendingViralLibrarySource,
+    }, '*');
   }
 }
 // 页面空闲时预载克隆子应用（下载/挂载成本移到点击之前，点开即显示）
@@ -1640,7 +1646,7 @@ window.addEventListener('message', (e) => {
     const frame = document.querySelector('#cloneToolOverlay iframe');
     if (frame && frame.contentWindow) {
       frame.contentWindow.postMessage({ type: 'selva-clone-seed', tasks: buildVGenTaskSeeds() }, '*');
-      frame.contentWindow.postMessage({ type: pendingCloneFlowType, initialTag: pendingViralLibraryTag }, '*');
+      frame.contentWindow.postMessage({ type: pendingCloneFlowType, initialTag: pendingViralLibraryTag, initialSource: pendingViralLibrarySource }, '*');
     }
   }
   if (e.data.type === 'selva-clone-task' && e.data.task) upsertCloneTask(e.data.task);
@@ -1653,7 +1659,9 @@ window.addEventListener('message', (e) => {
     }
   }
   if (e.data.type === 'selva-clone-nav' && e.data.section === 'viral-library') {
-    goPage('viral-library');
+    pendingCloneFlowType = 'selva-hot-library-open';
+    pendingViralLibrarySource = e.data.source === 'Kwai' ? 'Kwai' : 'TikTok';
+    goPage('viral-library', { skipViralLibraryEmbed: true });
   }
 });
 // 蒙层只盖内容区、侧边栏保持可用：克隆打开时点侧边栏任意导航 = 切换走（隐藏保会话）

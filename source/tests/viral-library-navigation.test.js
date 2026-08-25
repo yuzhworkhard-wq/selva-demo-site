@@ -30,9 +30,11 @@ test('platform navigation opens the viral library in the shared video iframe', (
 
   assert.match(navigation, /page === 'viral-library'/);
   assert.match(navigation, /openViralLibraryTool\(\)/);
+  assert.match(navigation, /skipViralLibraryEmbed/);
   assert.match(navigation, /setAttribute\('aria-current', 'page'\)/);
   assert.match(interactions, /selva-hot-library-open/);
+  assert.match(interactions, /initialSource: pendingViralLibrarySource/);
   assert.match(interactions, /e\.source !== cloneFrameWindow/);
   assert.match(interactions, /section === 'viral-library'/);
-  assert.match(interactions, /goPage\('viral-library'\)/);
+  assert.match(interactions, /skipViralLibraryEmbed: true/);
 });
