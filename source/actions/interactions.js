@@ -1505,6 +1505,7 @@ function openToolDetail(toolId) {
   if (toolId === 'tool-clone') { openCloneTool(); return; }   // 视频克隆是整页应用，走全屏 iframe 不走详情页
   if (toolId === 'tool-video') { openVideoGenTool(); return; } // 视频生成走 Prompt 裂变 modal 向导（利用同个 iframe 承载）
   if (toolId === 'tool-video-fanout') { openVideoFanoutTool(); return; }
+  if (toolId === 'tool-batch-mix') { openBatchMixTool(); return; }   // 批量混剪同走 clone/ 子应用
   currentToolDetail = toolId;
   renderWorkspace();
 }
@@ -1547,6 +1548,13 @@ function openVideoFanoutTool() {
   overlay.style.display = 'block';
   const frame = overlay.querySelector('iframe');
   if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-vfanout-open' }, '*');
+}
+function openBatchMixTool() {
+  pendingCloneFlowType = 'selva-vmix-open';
+  const overlay = ensureCloneFrame();
+  overlay.style.display = 'block';
+  const frame = overlay.querySelector('iframe');
+  if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-vmix-open' }, '*');
 }
 function openViralLibraryTool(initialTag = '全部') {
   pendingCloneFlowType = 'selva-hot-library-open';

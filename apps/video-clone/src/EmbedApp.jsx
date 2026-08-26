@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { CloneModal } from './CloneModal';
 import { VideoGenModal, ViralLibraryPage } from './VideoGenModal';
 import { VideoFanoutModal } from './VideoFanoutModal';
+import { BatchMixModal } from './BatchMixModal';
 import { CloneTaskDetail } from './CloneTaskDetail';
 import { VideoGenTaskDetail } from './VideoGenTaskDetail';
 import { buildFanoutScripts, buildVariantScripts, readVideoDims, FANOUT_DIMS } from './briefParser';
@@ -17,6 +18,7 @@ import './styles.css';
    父 → 子 {type:'selva-clone-open'}                      从工具箱打开克隆流程
    父 → 子 {type:'selva-vgen-open'}                       从工具箱打开视频生成流程
    父 → 子 {type:'selva-vfanout-open'}                    从工具箱打开视频裂变流程
+   父 → 子 {type:'selva-vmix-open'}                       从工具箱打开批量混剪流程
    父 → 子 {type:'selva-hot-library-open', initialTag, initialSource?}  从平台一级菜单打开爆款视频库；无 initialSource 时渠道默认 TikTok
    父 → 子 {type:'selva-clone-hide'}                      宿主侧栏切换走（暂停视频、标记关闭态）
    父 → 子 {type:'selva-clone-open-task', id}             从任务中心打开任务详情
@@ -135,7 +137,7 @@ export default function EmbedApp() {
   const [cloneOpen, setCloneOpen] = useState(true);   // iframe 首次加载即处于打开态
   const [cloneKey, setCloneKey] = useState(0);
   const [view, setView] = useState('flow');           // flow=工作流 | task=任务详情 | library=爆款视频库
-  const [flowType, setFlowType] = useState('clone');  // clone=视频克隆 | vgen=视频生成 | fanout=视频裂变
+  const [flowType, setFlowType] = useState('clone');  // clone=视频克隆 | vgen=视频生成 | fanout=视频裂变 | mix=批量混剪
   const [taskId, setTaskId] = useState(null);
   const [editSeed, setEditSeed] = useState(null);     // 「重新编辑」注入：{taskId, videoUrl, promptHtml, seq}
   const [libraryTag, setLibraryTag] = useState('全部');
@@ -392,6 +394,7 @@ export default function EmbedApp() {
       if (t === 'selva-clone-open') { setFlowType('clone'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-vgen-open') { setFlowType('vgen'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-vfanout-open') { setFlowType('fanout'); setView('flow'); setCloneOpen(true); }
+      if (t === 'selva-vmix-open') { setFlowType('mix'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-hot-library-open') {
         setLibraryTag(e.data.initialTag || '全部');
         setLibrarySource(e.data.initialSource === 'Kwai' ? 'Kwai' : 'TikTok');
@@ -472,6 +475,15 @@ export default function EmbedApp() {
               refAudios: editSeed.refAudios,
               regions: editSeed.regions || editSeed.fanoutFrom?.regions,
             } : null}
+          />
+        ) : flowType === 'mix' ? (
+          /* 批量混剪：素材与配置都在组件内部，不吃 editSeed，也不往任务中心报 */
+          <BatchMixModal
+            key={cloneKey}
+            visible={cloneOpen && view === 'flow'}
+            embedded
+            onClose={closeClone}
+            onRestart={resetFlow}
           />
         ) : (
           <CloneModal

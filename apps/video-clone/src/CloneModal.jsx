@@ -8,7 +8,7 @@ import {
   ImagePlus, Sparkles, Clock, Camera, MessageSquare,
   Eye, Pencil, CheckCircle2, Circle, ArrowLeft,
   Dices, Send, AlertTriangle, Pause, Unlock, Languages, Film, RotateCcw,
-  LayoutGrid, Clapperboard, Copy, Settings, Video, Trash2,
+  LayoutGrid, Clapperboard, Copy, Settings, Video, Trash2, FolderOpen,
 } from 'lucide-react';
 import { notifyHostModal } from './hostModal';
 
@@ -17,6 +17,74 @@ const STEPS = [
   { key: 'crop', label: '裁剪视频' },
   { key: 'storyboard', label: '分镜编辑' },
 ];
+
+/* 上传参考视频的资源库（与视频生成 / 批量混剪同一批 demo 素材） */
+const REF_LIB_VIDEOS = [
+  { id: 'lv-1', name: '春季_15s_A.mp4', url: 'test-clip.mp4', cover: 'frames/frame_01.jpg', meta: '00:15' },
+  { id: 'lv-2', name: '片头_标准版.mp4', url: 'test-clip.mp4', cover: 'frames/frame_08.jpg', meta: '00:05' },
+  { id: 'lv-3', name: '竞品_口播A.mp4', url: 'test-clip.mp4', cover: 'frames/frame_09.jpg', meta: '00:22' },
+  { id: 'lv-4', name: '竞品_到账B.mp4', url: 'test-clip.mp4', cover: 'frames/frame_04.jpg', meta: '00:18' },
+  { id: 'lv-5', name: '夜景转场素材.mp4', url: 'test-clip.mp4', cover: 'frames/frame_07.jpg', meta: '00:08' },
+  { id: 'lv-6', name: '片尾_温情版.mp4', url: 'test-clip.mp4', cover: 'frames/frame_06.jpg', meta: '00:06' },
+];
+
+const isBlobUrl = url => typeof url === 'string' && url.startsWith('blob:');
+const revokeBlobUrl = url => { if (isBlobUrl(url)) URL.revokeObjectURL(url); };
+
+/* 单选参考视频：克隆 / 裂变只要一条，勾选后确定 */
+function RefVideoLibraryDialog({ onPick, onClose }) {
+  const [pickedId, setPickedId] = useState(null);
+  useEffect(() => {
+    notifyHostModal(true);
+    const esc = e => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    window.addEventListener('keydown', esc, true);
+    return () => { window.removeEventListener('keydown', esc, true); notifyHostModal(false); };
+  }, [onClose]);
+  const picked = REF_LIB_VIDEOS.find(v => v.id === pickedId) || null;
+  return (
+    <div className="up-dialog-overlay" onClick={onClose}>
+      <div className="up-dialog up-dialog--lib" role="dialog" aria-modal="true" aria-label="从资源库选择参考视频" onClick={e => e.stopPropagation()}>
+        <div className="up-dialog-head">
+          <span className="up-dialog-title">从资源库选择 <em>我的资源库</em></span>
+          <button className="up-dialog-x" onClick={onClose} aria-label="关闭"><X size={16} /></button>
+        </div>
+        <div className="up-body up-body--lib">
+          <div className="up-lib up-lib--named">
+            {REF_LIB_VIDEOS.map(item => {
+              const sel = pickedId === item.id;
+              return (
+                <button
+                  key={item.id} type="button"
+                  className={`up-lib-item up-lib-item--named ${sel ? 'picked' : ''}`}
+                  style={{ aspectRatio: '3/4' }}
+                  title={item.name}
+                  onClick={() => setPickedId(item.id)}
+                >
+                  <img src={item.cover} alt="" />
+                  <span className="up-lib-play"><Film size={12} strokeWidth={2} /></span>
+                  {sel && <span className="up-lib-check"><Check size={12} /></span>}
+                  <span className="up-lib-cap"><b>{item.name}</b><em>{item.meta}</em></span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="up-foot">
+          <span className="up-foot-hint"><span className="up-foot-q">选择 1 条参考视频</span></span>
+          <div className="up-foot-btns">
+            <button type="button" className="btn-outline" onClick={onClose}>取消</button>
+            <button
+              type="button" className="btn-primary" disabled={!picked}
+              onClick={() => { if (picked) { onPick(picked); onClose(); } }}
+            >
+              <Check size={15} /> 使用此视频
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ── 左侧导航菜单（为未来的全局侧边菜单预留的占位）── */
 function CloneSidebar({ onHome }) {
@@ -99,7 +167,7 @@ export function CloneModal({
   videoUrlRef.current = videoUrl;
   useEffect(() => () => {
     const url = videoUrlRef.current;
-    if (url && url !== initialVideoUrl && !urlHandedOffRef.current) URL.revokeObjectURL(url);
+    if (url && url !== initialVideoUrl && !urlHandedOffRef.current) revokeBlobUrl(url);
   }, []);
 
   const startAnalyze = () => {
@@ -340,6 +408,7 @@ export function StepUpload({
   const setFile = onVideoFile;
   const setVideoUrl = onVideoUrl;
   const [phase, setPhase] = useState(() => (videoFile ? 'done' : 'empty'));  // empty | uploading | done
+  const [libOpen, setLibOpen] = useState(false);
   const fileRef = useRef();
   const uploadTimer = useRef(null);
 
@@ -347,11 +416,10 @@ export function StepUpload({
 
   const canProceed = phase === 'done';
 
-  const handleFile = (f) => {
-    if (!f) return;
-    if (videoUrl && videoUrl !== protectedUrl) URL.revokeObjectURL(videoUrl);   // 重新选择时释放旧视频（任务持有的除外）
+  const applyVideo = (f, url) => {
+    if (videoUrl && videoUrl !== protectedUrl) revokeBlobUrl(videoUrl);
     setFile(f);
-    setVideoUrl(URL.createObjectURL(f));
+    setVideoUrl(url);
     setPhase('uploading');
     clearTimeout(uploadTimer.current);
     uploadTimer.current = setTimeout(() => {
@@ -360,9 +428,20 @@ export function StepUpload({
     }, 1500);  // 模拟上传
   };
 
+  const handleFile = (f) => {
+    if (!f) return;
+    applyVideo(f, URL.createObjectURL(f));
+  };
+
+  const handleLibraryPick = (item) => {
+    // 资源库条目没有本地 File，造一个占位 File 带着名字，播放用库里的 url
+    const stub = new File([], item.name, { type: 'video/mp4' });
+    applyVideo(stub, item.url);
+  };
+
   const removeFile = () => {
     clearTimeout(uploadTimer.current);
-    if (videoUrl && videoUrl !== protectedUrl) URL.revokeObjectURL(videoUrl);
+    if (videoUrl && videoUrl !== protectedUrl) revokeBlobUrl(videoUrl);
     setFile(null);
     setVideoUrl(null);
     setPhase('empty');
@@ -393,7 +472,7 @@ export function StepUpload({
           <img src={showcaseSrc} alt={showcaseAlt} className={`upload-showcase-img${showcaseClass ? ` ${showcaseClass}` : ''}`} />
         </div>
 
-        {/* 右：上传参考视频 / 使用链接 */}
+        {/* 右：上传参考视频 / 从资源库选择 */}
         <div className={`upload-hero-right${showExtra ? ' upload-hero-right--locked' : ''}`}>
           <div className={showExtra ? 'upload-hero-right-fill' : 'upload-hero-right-flow'}>
           <div className="upload-hero-head">
@@ -411,15 +490,18 @@ export function StepUpload({
               className="upload-card"
               onDragOver={e => e.preventDefault()}
               onDrop={handleFileDrop}
-              onClick={() => fileRef.current?.click()}
             >
               <div className="upload-card-icon"><Video size={22} strokeWidth={1.5} /></div>
               <span className="upload-card-title">上传参考视频</span>
-              <span className="upload-card-hint">MP4 / MOV · 500MB 以内</span>
+              <span className="upload-card-hint">MP4 / MOV · 500MB 以内 · 也可从资源库选择</span>
               <div className="upload-card-btns">
                 <button type="button" className="btn-primary btn-sm"
                   onClick={e => { e.stopPropagation(); fileRef.current?.click(); }}>
                   <Upload size={13} /> 上传视频
+                </button>
+                <button type="button" className="btn-outline btn-sm"
+                  onClick={e => { e.stopPropagation(); setLibOpen(true); }}>
+                  <FolderOpen size={13} /> 从资源库选择
                 </button>
               </div>
             </div>
@@ -478,6 +560,13 @@ export function StepUpload({
           </div>
         </div>
       </div>
+
+      {libOpen && (
+        <RefVideoLibraryDialog
+          onPick={handleLibraryPick}
+          onClose={() => setLibOpen(false)}
+        />
+      )}
     </div>
   );
 }

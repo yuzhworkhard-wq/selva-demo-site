@@ -2,7 +2,7 @@ import React from 'react';
 import {
   FileText, Video, Globe, Mic, AlertTriangle,
   Clapperboard, Copy,
-  GitBranch,
+  GitBranch, Layers,
 } from 'lucide-react';
 
 const tools = [
@@ -15,7 +15,7 @@ const tools = [
   { icon: Clapperboard, label: '视频生成', category: 'video' },
 ];
 
-export function ToolboxPage({ onStartClone, onStartVideoGen, onStartVideoFanout }) {
+export function ToolboxPage({ onStartClone, onStartVideoGen, onStartVideoFanout, onStartBatchMix }) {
   return (
     <div className="toolbox-page">
       <div className="toolbox-header">
@@ -51,6 +51,11 @@ export function ToolboxPage({ onStartClone, onStartVideoGen, onStartVideoFanout 
             <button className="tool-card tool-card--primary" onClick={onStartVideoFanout}>
               <GitBranch size={20} strokeWidth={1.5} />
               <span>视频裂变</span>
+              <span className="tool-badge">New</span>
+            </button>
+            <button className="tool-card tool-card--primary" onClick={onStartBatchMix}>
+              <Layers size={20} strokeWidth={1.5} />
+              <span>批量混剪</span>
               <span className="tool-badge">New</span>
             </button>
           </div>

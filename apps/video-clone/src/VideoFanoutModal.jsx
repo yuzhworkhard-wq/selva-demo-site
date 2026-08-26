@@ -36,7 +36,10 @@ export function VideoFanoutModal({
 
   useEffect(() => () => {
     const url = videoUrlRef.current;
-    if (url && url !== initialVideoUrl && !urlHandedOffRef.current) URL.revokeObjectURL(url);
+    if (url && url !== initialVideoUrl && !urlHandedOffRef.current
+      && typeof url === 'string' && url.startsWith('blob:')) {
+      URL.revokeObjectURL(url);
+    }
   }, []);
 
   useEffect(() => {

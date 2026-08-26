@@ -3,6 +3,7 @@ import { ToolboxPage } from './ToolboxPage';
 import { CloneModal } from './CloneModal';
 import { VideoGenModal } from './VideoGenModal';
 import { VideoFanoutModal } from './VideoFanoutModal';
+import { BatchMixModal } from './BatchMixModal';
 import './styles.css';
 
 export default function App() {
@@ -12,6 +13,9 @@ export default function App() {
   const [videoFanoutOpen, setVideoFanoutOpen] = useState(false);
   const [videoFanoutAlive, setVideoFanoutAlive] = useState(false);
   const [videoFanoutKey, setVideoFanoutKey] = useState(0);
+  const [batchMixOpen, setBatchMixOpen] = useState(false);
+  const [batchMixAlive, setBatchMixAlive] = useState(false);
+  const [batchMixKey, setBatchMixKey] = useState(0);
 
   // 克隆会话：中途退出/切换只隐藏不卸载（进度保留），流程完成才卸载；换 key = 重新开始
   const [cloneOpen, setCloneOpen] = useState(false);
@@ -25,6 +29,8 @@ export default function App() {
   const closeVideoGen = (keepSession) => { setVideoGenOpen(false); if (!keepSession) setVideoGenAlive(false); };
   const openVideoFanout = () => { setVideoFanoutAlive(true); setVideoFanoutOpen(true); };
   const closeVideoFanout = (keepSession) => { setVideoFanoutOpen(false); if (!keepSession) setVideoFanoutAlive(false); };
+  const openBatchMix = () => { setBatchMixAlive(true); setBatchMixOpen(true); };
+  const closeBatchMix = (keepSession) => { setBatchMixOpen(false); if (!keepSession) setBatchMixAlive(false); };
 
   return (
     <>
@@ -32,6 +38,7 @@ export default function App() {
         onStartClone={openClone}
         onStartVideoGen={openVideoGen}
         onStartVideoFanout={openVideoFanout}
+        onStartBatchMix={openBatchMix}
       />
       {cloneAlive && (
         <CloneModal
@@ -55,6 +62,14 @@ export default function App() {
           visible={videoFanoutOpen}
           onClose={closeVideoFanout}
           onRestart={() => setVideoFanoutKey(k => k + 1)}
+        />
+      )}
+      {batchMixAlive && (
+        <BatchMixModal
+          key={batchMixKey}
+          visible={batchMixOpen}
+          onClose={closeBatchMix}
+          onRestart={() => setBatchMixKey(k => k + 1)}
         />
       )}
     </>

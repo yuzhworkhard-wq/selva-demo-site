@@ -434,8 +434,8 @@ check(embed.includes("e.data.initialSource === 'Kwai'"),
   '侧栏打开库页时无 initialSource 则回落到 TikTok，有 Kwai 则保留');
 check(embed.includes("document.querySelector('.composer-input--rich')?.focus()"), '一级菜单模板回填后焦点落到视频生成输入框');
 check(embed.includes('visible={cloneOpen}'), '库页覆盖输入页时保持视频生成会话可见，返回时不误触发恢复弹窗');
-check((embed.match(/visible=\{cloneOpen && view === 'flow'\}/g) || []).length === 2,
-  '库页打开时暂停克隆与视频裂变流程，避免隐藏流程响应全局按键');
+check((embed.match(/visible=\{cloneOpen && view === 'flow'\}/g) || []).length === 3,
+  '库页打开时暂停克隆 / 视频裂变 / 批量混剪流程，避免隐藏流程响应全局按键');
 check(embed.includes("inert={view === 'library'}"), '库页打开时底层视频流程退出键盘和读屏焦点树');
 check(styles.includes('.embed-flow-layer[inert] .clone-page'), '库页打开时底层视频流程同步降到详情页下方');
 
