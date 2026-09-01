@@ -111,6 +111,7 @@ const TOOLBOX_TOOLS = [
   { id: 'tool-disclaimer', name: '添加警示语', en: 'Disclaimer Overlay', icon: '⚠️', category: 'content', desc: '为视频自动添加合规警示语文字' },
   { id: 'tool-clone', name: '视频克隆', en: 'Video Clone', icon: '🧬', category: 'video', desc: '上传一条参考视频，AI 自动拆解镜头、改写台词，生成目标地区的多语种克隆片' },
   { id: 'tool-batch-mix', name: '批量混剪', en: 'Batch Mix', icon: '🎞', category: 'video', desc: '上传同品牌的多条素材，按不同顺序拼接成完整广告，统一转场与配乐批量出片' },
+  { id: 'tool-frame', name: '批量套边框', en: 'Batch Frame', icon: '🖼', category: 'video', desc: '生成多批次边框图片，上传视频池，全排列批量合成——居中或角落布局任选，上限 20 条' },
 ];
 
 const LANGUAGES = ['中文（简体）','英文','葡萄牙语（巴西）','西班牙语（哥伦比亚）','日语','韩语','法语','印尼语','越南语'];
@@ -365,6 +366,56 @@ const VGEN_TASK_SEEDS = {
     fanoutFrom: { videoUrl: 'test-clip.mp4', baseIndex: 0, steer: '换个场景和光线试试', varyKeys: ['setting', 'lighting'], readBase: true },
   },
 };
+
+/* ===== 工具箱「批量混剪」种子任务的详情数据 =====
+   详情走 apps/video-clone 的 BatchMixTaskDetail（封面卡片墙）。
+   写成种子是为了不必每次从工具箱导出一遍才能点开详情。 */
+const VMIX_POOL = [
+  { id: 'mx-a', name: '春季_15s_A.mp4', url: 'test-clip.mp4', cover: 'frames/frame_01.jpg', duration: 15 },
+  { id: 'mx-b', name: '片头_标准版.mp4', url: 'test-clip.mp4', cover: 'frames/frame_08.jpg', duration: 5 },
+  { id: 'mx-c', name: '竞品_口播A.mp4', url: 'test-clip.mp4', cover: 'frames/frame_09.jpg', duration: 22 },
+  { id: 'mx-d', name: '竞品_到账B.mp4', url: 'test-clip.mp4', cover: 'frames/frame_04.jpg', duration: 18 },
+  { id: 'mx-e', name: '夜景转场素材.mp4', url: 'test-clip.mp4', cover: 'frames/frame_07.jpg', duration: 8 },
+  { id: 'mx-f', name: '片尾_温情版.mp4', url: 'test-clip.mp4', cover: 'frames/frame_06.jpg', duration: 6 },
+];
+function buildMixVariant(id, seqIds, status, opts = {}) {
+  const byId = Object.fromEntries(VMIX_POOL.map(c => [c.id, c]));
+  const clips = seqIds.map(sid => ({ ...byId[sid] })).filter(Boolean);
+  return {
+    id,
+    status,
+    seq: seqIds,
+    duration: clips.reduce((s, c) => s + (c.duration || 0), 0),
+    clips,
+    transition: opts.transition || 'fade',
+    transitionLabel: opts.transitionLabel || '淡入淡出',
+    leadLock: !!opts.leadLock,
+    segments: clips.length,
+  };
+}
+const VMIX_TASK_SEEDS = {
+  /* 已全部合成：打开即可勾选批量下载 */
+  'T-20260831-M01': {
+    mixMeta: { bgm: { name: '品牌BGM_轻快.mp3', duration: 48 }, keepVoice: true },
+    variants: [
+      buildMixVariant('mix-1', ['mx-b', 'mx-a', 'mx-d'], 'done', { leadLock: true }),
+      buildMixVariant('mix-2', ['mx-b', 'mx-c', 'mx-f'], 'done', { leadLock: true, transitionLabel: '向左滑动', transition: 'slide-left' }),
+      buildMixVariant('mix-3', ['mx-b', 'mx-d', 'mx-e'], 'done', { leadLock: true }),
+      buildMixVariant('mix-4', ['mx-b', 'mx-a', 'mx-c'], 'done', { leadLock: true, transitionLabel: '递进', transition: 'push-up' }),
+      buildMixVariant('mix-5', ['mx-b', 'mx-e', 'mx-f'], 'done', { leadLock: true }),
+    ],
+  },
+  /* 合成进行中：有的成功、有的在合成、有的排队——详情态不用每次现跑 */
+  'T-20260831-M02': {
+    mixMeta: { bgm: null, keepVoice: true },
+    variants: [
+      buildMixVariant('mix-a', ['mx-a', 'mx-c', 'mx-f'], 'done'),
+      buildMixVariant('mix-b', ['mx-c', 'mx-d', 'mx-e'], 'done', { transitionLabel: '拉远', transition: 'zoom-out' }),
+      buildMixVariant('mix-c', ['mx-d', 'mx-a', 'mx-b'], 'generating'),
+      buildMixVariant('mix-d', ['mx-e', 'mx-f', 'mx-c'], 'pending'),
+    ],
+  },
+};
 // 平台的任务状态词汇 → 子应用的（平台没有 done，用 completed）
 const VGEN_STATUS_TO_SUBAPP = { completed: 'done', partial: 'partial', failed: 'failed', generating: 'generating' };
 const VGEN_FAIL_REASONS = [
@@ -376,6 +427,24 @@ const VGEN_FAIL_REASONS = [
 function buildVGenTaskSeeds() {
   const seeds = [];
   MOCK_TASKS.forEach(task => {
+    /* 批量混剪：详情要的是封面卡片墙 + 拼接片段，不走视频生成那套脚本补全 */
+    if (task.toolName === '批量混剪') {
+      const extra = VMIX_TASK_SEEDS[task.id];
+      if (!extra) return;
+      seeds.push({
+        id: task.id,
+        name: task.name,
+        status: VGEN_STATUS_TO_SUBAPP[task.status] || 'done',
+        createdAt: task.createdAt,
+        duration: task.duration,
+        toolName: '批量混剪',
+        mixMeta: extra.mixMeta || { bgm: null, keepVoice: true },
+        variants: extra.variants || [],
+        videoUrl: 'test-clip.mp4',
+        cloneUrl: task.status === 'generating' ? null : 'test-clip.mp4',
+      });
+      return;
+    }
     const extra = VGEN_TASK_SEEDS[task.id];
     if (!extra) return;
     const outputs = task.outputs || [];
@@ -414,6 +483,50 @@ function buildVGenTaskSeeds() {
 
 // ===== Mock Tasks =====
 const MOCK_TASKS = [
+  /* 批量混剪：打开即可看封面卡片墙详情，不必每次从工具箱导出一遍 */
+  {
+    id: 'T-20260831-M01',
+    toolId: 'tool-batch-mix',
+    name: '批量混剪 · 5 条',
+    status: 'completed',
+    source: 'toolbox',
+    toolName: '批量混剪',
+    product: '—',
+    outputSummary: '批量混剪完成 5 条',
+    createdAt: '2026-08-31 16:28',
+    duration: '1 分 35 秒',
+    outputTypes: ['video'],
+    ownerId: 'u1',
+    isCloneTask: true,
+    outputs: [
+      { name: '组合_001.mp4', status: 'done', duration: '00:38', actions: ['播放', '下载'] },
+      { name: '组合_002.mp4', status: 'done', duration: '00:33', actions: ['播放', '下载'] },
+      { name: '组合_003.mp4', status: 'done', duration: '00:31', actions: ['播放', '下载'] },
+      { name: '组合_004.mp4', status: 'done', duration: '00:42', actions: ['播放', '下载'] },
+      { name: '组合_005.mp4', status: 'done', duration: '00:19', actions: ['播放', '下载'] }
+    ]
+  },
+  {
+    id: 'T-20260831-M02',
+    toolId: 'tool-batch-mix',
+    name: '批量混剪 · 4 条',
+    status: 'generating',
+    source: 'toolbox',
+    toolName: '批量混剪',
+    product: '—',
+    outputSummary: '批量混剪中',
+    createdAt: '2026-08-31 17:05',
+    duration: '进行中',
+    outputTypes: ['video'],
+    ownerId: 'u1',
+    isCloneTask: true,
+    outputs: [
+      { name: '组合_001.mp4', status: 'done', duration: '00:43', actions: ['播放', '下载'] },
+      { name: '组合_002.mp4', status: 'done', duration: '00:48', actions: ['播放', '下载'] },
+      { name: '组合_003.mp4', status: 'processing', duration: '进行中', actions: ['播放', '下载'] },
+      { name: '组合_004.mp4', status: 'processing', duration: '进行中', actions: ['播放', '下载'] }
+    ]
+  },
   /* 上传裂变：基准是用户自己传的一段片子，不来自任务中心。
      详情里「裂变自 你上传的视频」，来源任务那行不出现。 */
   {

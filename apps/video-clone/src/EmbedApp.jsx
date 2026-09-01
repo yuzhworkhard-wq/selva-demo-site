@@ -3,8 +3,10 @@ import { CloneModal } from './CloneModal';
 import { VideoGenModal, ViralLibraryPage } from './VideoGenModal';
 import { VideoFanoutModal } from './VideoFanoutModal';
 import { BatchMixModal } from './BatchMixModal';
+import { BatchFrameModal } from './BatchFrameModal';
 import { CloneTaskDetail } from './CloneTaskDetail';
 import { VideoGenTaskDetail } from './VideoGenTaskDetail';
+import { BatchMixTaskDetail } from './BatchMixTaskDetail';
 import { buildFanoutScripts, buildVariantScripts, readVideoDims, FANOUT_DIMS } from './briefParser';
 import { normalizeRegions } from './videoRegionConfig.mjs';
 import { SOURCES } from './viralLibrary.mjs';
@@ -84,6 +86,8 @@ function postTaskMeta(task) {
    基准取值和 N 条脚本按跟真人操作同一条路径现算（读基准 → buildFanoutScripts），
    这样「只变人物、其余逐字沿用」在历史任务里也是真的，不是写死的一句话。 */
 function fillSeedScripts(task, byId = {}, seen = new Set()) {
+  // 批量混剪种子自带封面与片段，不要拿视频生成脚本逻辑去改写
+  if (task.toolName === '批量混剪') return task;
   const variants = task.variants || [];
   if (!variants.length || variants.some(v => v && v.promptHtml)) return task;
   const from = task.fanoutFrom;
@@ -137,7 +141,7 @@ export default function EmbedApp() {
   const [cloneOpen, setCloneOpen] = useState(true);   // iframe 首次加载即处于打开态
   const [cloneKey, setCloneKey] = useState(0);
   const [view, setView] = useState('flow');           // flow=工作流 | task=任务详情 | library=爆款视频库
-  const [flowType, setFlowType] = useState('clone');  // clone=视频克隆 | vgen=视频生成 | fanout=视频裂变 | mix=批量混剪
+  const [flowType, setFlowType] = useState('clone');  // clone=视频克隆 | vgen=视频生成 | fanout=视频裂变 | mix=批量混剪 | frame=批量套边框
   const [taskId, setTaskId] = useState(null);
   const [editSeed, setEditSeed] = useState(null);     // 「重新编辑」注入：{taskId, videoUrl, promptHtml, seq}
   const [libraryTag, setLibraryTag] = useState('全部');
@@ -170,15 +174,21 @@ export default function EmbedApp() {
     }
     const tName = p.toolName || '视频克隆';
     Object.assign(task, {
-      name: p.name || (tName === '视频生成' ? `视频生成-${p.region}` : tName === '视频裂变' ? '视频裂变' : `视频克隆-${p.region}`),
+      name: p.name || (
+        tName === '视频生成' ? `视频生成-${p.region}`
+          : tName === '视频裂变' ? '视频裂变'
+            : tName === '批量混剪' ? '批量混剪'
+              : `视频克隆-${p.region}`
+      ),
       videoUrl: p.videoUrl,
       promptHtml: p.promptHtml,
       promptText: p.promptText,
-      variants: p.variants || null,       // 裂变任务：每条变体各自的脚本
+      variants: p.variants || null,       // 裂变 / 生成 / 混剪：每条变体
       sourceText: p.sourceText || null,   // 原始输入（N 条共同来源）
       images: p.images || null,           // 参考素材（N 条共用）
       refVideos: p.refVideos || null,     // 参考视频 / 音频：只有部分模型收，详情页按名字列
       refAudios: p.refAudios || null,
+      mixMeta: p.mixMeta || null,         // 批量混剪：配乐 / 保留原声
       // 第一步的出参设置：「重新编辑」回去时要原样带回，不能让用户重设一遍
       model: p.model || null,
       fanoutFrom: p.fanoutFrom || null,   // 裂变来路：基准任务/基准条/变了哪几维/用户那句指令
@@ -193,8 +203,40 @@ export default function EmbedApp() {
       toolName: tName,
     });
     postTaskMeta(task);
+
+    // 批量混剪：本地拼接，逐条「待合成 → 合成中 → 合成成功」，没有模型失败
+    if (tName === '批量混剪' && Array.isArray(task.variants)) {
+      task.variants = task.variants.map(v => ({ ...v, status: 'pending' }));
+      task.status = 'generating';
+      postTaskMeta(task);
+      bump();
+      const STEP = 1300;
+      task.variants.forEach((_, i) => {
+        genTimers.current.push(setTimeout(() => {
+          task.variants = task.variants.map((v, j) => (
+            j === i ? { ...v, status: 'generating' } : v
+          ));
+          bump();
+        }, 400 + i * STEP));
+        genTimers.current.push(setTimeout(() => {
+          task.variants = task.variants.map((v, j) => (
+            j === i ? { ...v, status: 'done' } : v
+          ));
+          const allDone = task.variants.every(v => v.status === 'done');
+          if (allDone) {
+            task.status = 'done';
+            task.cloneUrl = task.videoUrl;
+            task.duration = `${Math.max(1, Math.round(task.variants.length * 1.3))} 分 ${pad(task.variants.length * 7 % 60)} 秒`;
+            postTaskMeta(task);
+          }
+          bump();
+        }, 400 + i * STEP + 1100));
+      });
+      return;
+    }
+
     genTimers.current.push(setTimeout(() => {
-      // 逐条落状态：视频生成才有失败一说，克隆是一对一走原路径
+      // 逐条落状态：视频生成 / 裂变会模拟模型失败；克隆一对一
       if ((tName === '视频生成' || tName === '视频裂变') && Array.isArray(task.variants)) {
         const total = task.variants.length;
         task.variants = task.variants.map((v, i) => {
@@ -218,6 +260,7 @@ export default function EmbedApp() {
   const regenerate = (task, idx) => {
     if (!task) return;
     const isFanout = task.toolName === '视频裂变';
+    const isMix = task.toolName === '批量混剪';
     const wanted = Array.isArray(idx) ? idx : (typeof idx === 'number' ? [idx] : null);
     // 挑出要重来的那几条，并把上一轮的失败痕迹抹掉——新任务从干净状态开始跑
     const picked = (wanted && task.variants)
@@ -229,15 +272,20 @@ export default function EmbedApp() {
       variants,
       promptHtml: variants && variants[0] ? variants[0].promptHtml : task.promptHtml,
       promptText: variants
-        ? variants.map(v => v.promptHtml.replace(/<[^>]+>/g, '')).join('\n---\n')
+        ? variants.map((v, i) => (
+          v.promptHtml
+            ? v.promptHtml.replace(/<[^>]+>/g, '')
+            : `成片 ${i + 1}: ${(v.clips || []).map(c => c.name).join(' → ')}`
+        )).join('\n---\n')
         : task.promptText,
       sourceText: task.sourceText,
       images: task.images, refVideos: task.refVideos, refAudios: task.refAudios,
+      mixMeta: task.mixMeta,
       model: task.model, aspect: task.aspect, outDuration: task.outDuration, magic: task.magic,
       name: picked
         ? (picked.length > 1
-          ? (isFanout ? `视频裂变 · ${picked.length} 条` : `视频生成 · ${picked.length} 条`)
-          : (isFanout ? '视频裂变' : '视频生成'))
+          ? (isMix ? `批量混剪 · ${picked.length} 条` : isFanout ? `视频裂变 · ${picked.length} 条` : `视频生成 · ${picked.length} 条`)
+          : (isMix ? '批量混剪' : isFanout ? '视频裂变' : '视频生成'))
         : task.name,
       region: task.region, regions: task.regions, toolName: task.toolName, fanoutFrom: task.fanoutFrom,
     });
@@ -395,6 +443,7 @@ export default function EmbedApp() {
       if (t === 'selva-vgen-open') { setFlowType('vgen'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-vfanout-open') { setFlowType('fanout'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-vmix-open') { setFlowType('mix'); setView('flow'); setCloneOpen(true); }
+      if (t === 'selva-vframe-open') { setFlowType('frame'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-hot-library-open') {
         setLibraryTag(e.data.initialTag || '全部');
         setLibrarySource(e.data.initialSource === 'Kwai' ? 'Kwai' : 'TikTok');
@@ -410,7 +459,12 @@ export default function EmbedApp() {
         const task = taskStore.find(x => x.id === id);
         setTaskId(id);
         if (task) {
-          setFlowType(task.toolName === '视频生成' ? 'vgen' : task.toolName === '视频裂变' ? 'fanout' : 'clone');
+          setFlowType(
+            task.toolName === '视频生成' ? 'vgen'
+              : task.toolName === '视频裂变' ? 'fanout'
+                : task.toolName === '批量混剪' ? 'mix'
+                  : 'clone',
+          );
         }
         setView('task');
         setCloneOpen(true);
@@ -477,13 +531,22 @@ export default function EmbedApp() {
             } : null}
           />
         ) : flowType === 'mix' ? (
-          /* 批量混剪：素材与配置都在组件内部，不吃 editSeed，也不往任务中心报 */
           <BatchMixModal
             key={cloneKey}
             visible={cloneOpen && view === 'flow'}
             embedded
             onClose={closeClone}
             onRestart={resetFlow}
+            onSubmitTask={submitTask}
+          />
+        ) : flowType === 'frame' ? (
+          <BatchFrameModal
+            key={cloneKey}
+            visible={cloneOpen && view === 'flow'}
+            embedded
+            onClose={closeClone}
+            onRestart={resetFlow}
+            onSubmitTask={submitTask}
           />
         ) : (
           <CloneModal
@@ -520,6 +583,11 @@ export default function EmbedApp() {
             onReEdit={() => reEdit(curTask)}
             onRegenerate={(i) => regenerate(curTask, i)}
             onFanout={(p) => fanout(curTask, p)}
+          />
+        ) : curTask.toolName === '批量混剪' ? (
+          <BatchMixTaskDetail
+            task={curTask}
+            onBack={() => closeClone(true)}
           />
         ) : (
           <CloneTaskDetail

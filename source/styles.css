@@ -2197,3 +2197,29 @@
 
   /* ===== 视频克隆弹窗全局化：子应用弹窗打开时，侧栏叠同款半透明遮罩（iframe 内遮罩只盖内容区） ===== */
   .clone-sidebar-scrim { position: fixed; left: 0; top: 0; bottom: 0; width: 240px; z-index: 500; background: rgba(0, 0, 0, 0.55); }
+
+  /* ===== 批量套边框工具 ===== */
+  .frame-batch-row { background: #0d0d14; border: 1px solid #1e1e2e; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+  .frame-upload-btn { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; background: #16161f; border: 1px solid #2a2a3a; border-radius: 6px; color: #666; font-size: 11px; padding: 6px 8px; cursor: pointer; transition: border-color .15s, color .15s; }
+  .frame-upload-btn:hover { border-color: #3a3a4a; color: #999; }
+
+  /* 边框变体缩略图 */
+  .frame-variant-thumb { width: 58px; height: 58px; border-radius: 6px; background: #141420; border: 2px solid #2a2a3a; cursor: pointer; position: relative; overflow: hidden; transition: border-color .15s, transform .1s; }
+  .frame-variant-thumb:hover { transform: scale(1.06); border-color: #3a3a4a; }
+  .frame-variant-thumb[data-selected="1"] { border-color: #6161ff; box-shadow: 0 0 0 1px #6161ff33; }
+  .fvt-inner { position: absolute; inset: 0; }
+  .fvt-inner::before { content: ''; position: absolute; inset: 5px; border: 1px solid #2e2e40; border-radius: 3px; }
+  .fvt-check { position: absolute; top: 3px; right: 4px; font-size: 11px; color: #6161ff; font-weight: 700; line-height: 1; }
+
+  /* 布局选项卡 */
+  .frame-layout-option { background: #0d0d14; border: 1px solid #1e1e2e; border-radius: 10px; padding: 14px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .frame-layout-option:hover { border-color: #2a2a3a; background: #0f0f18; }
+  .frame-layout-option.selected { border-color: #6161ff; background: #6161ff0a; }
+  .flo-preview { position: relative; height: 72px; border-radius: 6px; background: #0a0a0f; border: 1px solid #1e1e2e; margin-bottom: 10px; overflow: hidden; }
+  .flo-border { position: absolute; inset: 0; border: 2px solid #2a2a40; border-radius: 5px; }
+  .flo-video { background: #1c1c2c; border: 1px solid #2e2e44; border-radius: 3px; position: absolute; }
+  .flo-preview--center .flo-video--center { inset: 10px 14px; }
+  .flo-preview--corner .flo-border { border-color: #252535; }
+  .flo-preview--corner .flo-video--corner { width: 42%; height: 58%; bottom: 5px; right: 5px; }
+  .flo-label { font-size: 13px; font-weight: 600; color: #e0e0e0; margin-bottom: 3px; }
+  .flo-desc { font-size: 11px; color: #555; line-height: 1.5; }

@@ -1506,6 +1506,7 @@ function openToolDetail(toolId) {
   if (toolId === 'tool-video') { openVideoGenTool(); return; } // 视频生成走 Prompt 裂变 modal 向导（利用同个 iframe 承载）
   if (toolId === 'tool-video-fanout') { openVideoFanoutTool(); return; }
   if (toolId === 'tool-batch-mix') { openBatchMixTool(); return; }   // 批量混剪同走 clone/ 子应用
+  if (toolId === 'tool-frame') { openBatchFrameTool(); return; }     // 批量套边框同走 clone/ 子应用
   currentToolDetail = toolId;
   renderWorkspace();
 }
@@ -1556,6 +1557,13 @@ function openBatchMixTool() {
   const frame = overlay.querySelector('iframe');
   if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-vmix-open' }, '*');
 }
+function openBatchFrameTool() {
+  pendingCloneFlowType = 'selva-vframe-open';
+  const overlay = ensureCloneFrame();
+  overlay.style.display = 'block';
+  const frame = overlay.querySelector('iframe');
+  if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-vframe-open' }, '*');
+}
 function openViralLibraryTool(initialTag = '全部') {
   pendingCloneFlowType = 'selva-hot-library-open';
   pendingViralLibraryTag = initialTag || '全部';
@@ -1595,13 +1603,15 @@ function openCloneTaskDetail(taskId) {
 }
 // 子应用上报的克隆/生成任务（新建/状态更新）→ 任务中心列表行
 function upsertCloneTask(meta) {
-  const isVGen = meta.toolName === '视频生成' || meta.toolName === '视频裂变';
+  const isVGen = meta.toolName === '视频生成' || meta.toolName === '视频裂变' || meta.toolName === '批量混剪';
   const isFanout = meta.toolName === '视频裂变';
+  const isMix = meta.toolName === '批量混剪';
   // 一批里可能只挂掉几条：failedCount/totalCount 由子应用逐条汇总后报上来
   const failed = Number(meta.failedCount || 0);
   const total = Number(meta.totalCount || 0);
+  const toolLabel = isMix ? '批量混剪' : isFanout ? '视频裂变' : '视频生成';
   const summary = {
-    completed: isVGen ? `${isFanout ? '视频裂变' : '视频生成'}完成 ${total} 条` : '克隆视频 1 个',
+    completed: isVGen ? `${toolLabel}完成 ${total} 条` : '克隆视频 1 个',
     partial: `${total} 条中 ${total - failed} 条成功、${failed} 条失败`,
     failed: total > 1 ? `${total} 条全部生成失败` : '生成失败',
   };
@@ -1613,7 +1623,7 @@ function upsertCloneTask(meta) {
     toolName: meta.toolName || '视频克隆',
     product: '—',
     outputSummary: summary[meta.status]
-      || (isVGen ? `${isFanout ? '视频裂变' : '视频生成'}中` : '克隆视频 1 个（生成中）'),
+      || (isVGen ? `${toolLabel}中` : '克隆视频 1 个（生成中）'),
     createdAt: meta.createdAt,
     duration: meta.duration || '—',
     outputTypes: ['video'],
@@ -1718,6 +1728,8 @@ function renderToolDetailPage(toolId) {
     formHtml = renderToolFormGrok();
   } else if (toolId === 'tool-veo') {
     formHtml = renderToolFormVeo();
+  } else if (toolId === 'tool-frame') {
+    formHtml = renderToolFormFrame();
   }
 
   return header + formHtml;
@@ -4397,4 +4409,288 @@ function runWorkflow(templateId) {
   } else {
     toast('✅ 工作流「' + (wt ? wt.name : '') + '」已开始运行（原型演示）');
   }
+}
+
+// ===== 批量套边框工具 =====
+// 状态
+let _frameState = {
+  frames: [],        // [{id, prompt, refImg, status:'idle'|'generating'|'done', variants:[{id,hue}]}]
+  videos: [],        // [{id, name, hue}]
+  layout: 'center',  // 'center' | 'corner'
+  nextFrameId: 1,
+  nextVideoId: 1,
+};
+const FRAME_CAP = 20;
+
+function _frameCount() {
+  return _frameState.frames.reduce((n, f) => n + (f.variants ? f.variants.length : 0), 0);
+}
+function _frameVideoProduct() {
+  return _frameCount() * _frameState.videos.length;
+}
+
+function renderToolFormFrame() {
+  const s = _frameState;
+  const product = _frameVideoProduct();
+  const overCap = product > FRAME_CAP;
+  const canSubmit = _frameCount() > 0 && s.videos.length > 0 && !overCap;
+
+  const framesHtml = s.frames.length ? s.frames.map(f => `
+    <div class="frame-batch-row" id="frame-row-${f.id}">
+      <div style="display:flex; gap:10px; align-items:flex-start;">
+        <div style="flex:1;">
+          <div style="font-size:12px; color:#888; margin-bottom:4px;">批次 #${f.id}</div>
+          <textarea id="frame-prompt-${f.id}" rows="2"
+            style="width:100%; background:#0a0a0f; border:1px solid #2a2a3a; border-radius:8px; padding:8px 10px; color:#e0e0e0; font-size:13px; resize:vertical; outline:none;"
+            placeholder="描述边框风格，例如：品牌红色+金色徽标，底部带促销文案区域..."
+            oninput="_frameUpdatePrompt(${f.id}, this.value)">${f.prompt || ''}</textarea>
+        </div>
+        <div style="flex-shrink:0; display:flex; flex-direction:column; gap:6px; align-items:center; padding-top:18px;">
+          <label class="frame-upload-btn" title="上传参考图">
+            <input type="file" accept="image/*" style="display:none;" onchange="_frameUploadRef(${f.id}, this)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span style="font-size:11px;">${f.refImg ? '已上传' : '参考图'}</span>
+          </label>
+          <button onclick="_frameGenerate(${f.id})"
+            style="background:#16161f; border:1px solid #2a2a3a; border-radius:6px; color:#999; font-size:11px; padding:5px 8px; cursor:pointer; white-space:nowrap; transition:border-color .15s,color .15s;"
+            onmouseenter="this.style.borderColor='#3a3a4a';this.style.color='#e0e0e0'" onmouseleave="this.style.borderColor='#2a2a3a';this.style.color='#999'">
+            ${f.status === 'generating' ? '生成中…' : f.status === 'done' ? '重新生成' : '生成边框'}
+          </button>
+          <button onclick="_frameRemoveBatch(${f.id})"
+            style="background:none; border:none; color:#666; font-size:18px; cursor:pointer; line-height:1;" title="删除批次">×</button>
+        </div>
+      </div>
+      ${f.refImg ? `<div style="margin-top:6px; font-size:11px; color:#6161ff;">📎 ${f.refImg}</div>` : ''}
+      ${f.variants && f.variants.length ? `
+        <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+          ${f.variants.map(v => `
+            <div style="position:relative;">
+              <div class="frame-variant-thumb" style="--hue:${v.hue};"
+                onclick="_frameToggleVariant(${f.id}, '${v.id}', this)"
+                data-selected="${v.selected ? '1' : '0'}"
+                title="点击选用 / 取消">
+                <div class="fvt-inner"></div>
+                ${v.selected ? '<div class="fvt-check">✓</div>' : ''}
+              </div>
+              <div style="font-size:10px; color:#666; text-align:center; margin-top:2px;">变体 ${v.idx}</div>
+            </div>`).join('')}
+        </div>` : ''}
+    </div>`).join('') : `<div style="color:#555; font-size:13px; padding:20px 0; text-align:center;">暂无边框批次，点击「+ 添加边框批次」开始</div>`;
+
+  const videosHtml = s.videos.length ? `
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+      ${s.videos.map(v => `
+        <div style="position:relative; text-align:center;">
+          <div style="width:64px; height:64px; border-radius:8px; background:oklch(22% 0.04 ${v.hue}); border:1px solid oklch(30% 0.06 ${v.hue}); display:flex; align-items:center; justify-content:center;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="oklch(70% 0.15 ${v.hue})" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m10 9 5 3-5 3V9z"/></svg>
+          </div>
+          <div style="font-size:10px; color:#888; margin-top:3px; max-width:64px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${v.name}</div>
+          <button onclick="_frameRemoveVideo('${v.id}')" style="position:absolute; top:-4px; right:-4px; width:16px; height:16px; border-radius:50%; background:#f87171; border:none; color:#fff; font-size:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1;">×</button>
+        </div>`).join('')}
+    </div>` : `<div style="color:#555; font-size:13px; padding:12px 0;">暂无视频，点击下方上传</div>`;
+
+  const layoutCenter = s.layout === 'center';
+  const layoutCorner = s.layout === 'corner';
+
+  return `
+    <div class="tool-form-area">
+      ${_taskInfoCard({ showDescription: false })}
+
+      <div class="form-card">
+        <div class="form-card-title">🖼 边框批次</div>
+        <div style="font-size:12px; color:#666; margin-bottom:12px;">每个批次生成 4 张边框变体，选中的变体参与合成。</div>
+        <div id="frame-batches-list">${framesHtml}</div>
+        <button onclick="_frameAddBatch()"
+          style="margin-top:12px; background:#16161f; border:1px dashed #2a2a3a; border-radius:8px; color:#888; font-size:13px; padding:10px 16px; cursor:pointer; width:100%; transition:border-color .15s;"
+          onmouseenter="this.style.borderColor='#3a3a4a'" onmouseleave="this.style.borderColor='#2a2a3a'">
+          + 添加边框批次
+        </button>
+      </div>
+
+      <div class="form-card">
+        <div class="form-card-title">🎬 视频池</div>
+        <div style="font-size:12px; color:#666; margin-bottom:8px;">上传需要套边框的视频，所有视频将与所有选中边框全排列合成。</div>
+        ${videosHtml}
+        <label style="display:inline-flex; align-items:center; gap:6px; margin-top:10px; background:#16161f; border:1px dashed #2a2a3a; border-radius:8px; padding:8px 14px; cursor:pointer; font-size:13px; color:#888; transition:border-color .15s;"
+          onmouseenter="this.style.borderColor='#3a3a4a'" onmouseleave="this.style.borderColor='#2a2a3a'">
+          <input type="file" accept="video/*" multiple style="display:none;" onchange="_frameUploadVideos(this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          上传视频
+        </label>
+      </div>
+
+      <div class="form-card">
+        <div class="form-card-title">⚙ 合成设置</div>
+        <div style="margin-bottom:16px;">
+          <div style="font-size:13px; color:#ccc; margin-bottom:10px; font-weight:500;">边框布局</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="frame-layout-option ${layoutCenter ? 'selected' : ''}" onclick="_frameSetLayout('center')">
+              <div class="flo-preview flo-preview--center">
+                <div class="flo-border"></div>
+                <div class="flo-video flo-video--center"></div>
+              </div>
+              <div class="flo-label">居中布局</div>
+              <div class="flo-desc">视频在边框中心对齐，四边留白均匀</div>
+            </div>
+            <div class="frame-layout-option ${layoutCorner ? 'selected' : ''}" onclick="_frameSetLayout('corner')">
+              <div class="flo-preview flo-preview--corner">
+                <div class="flo-border"></div>
+                <div class="flo-video flo-video--corner"></div>
+              </div>
+              <div class="flo-label">角落布局</div>
+              <div class="flo-desc">视频贴右下角，左侧和顶部展示边框内容</div>
+            </div>
+          </div>
+        </div>
+        <div style="background:#0a0a0f; border:1px solid #1e1e2e; border-radius:8px; padding:12px 14px; display:flex; align-items:center; justify-content:space-between;">
+          <div>
+            <span style="font-size:13px; color:#ccc;">预计出片数</span>
+            <span style="font-size:20px; font-weight:700; color:${overCap ? '#f87171' : '#a78bfa'}; margin:0 8px;">${product}</span>
+            <span style="font-size:12px; color:#666;">条（上限 ${FRAME_CAP} 条）</span>
+          </div>
+          <div style="font-size:12px; color:#666;">${_frameCount()} 张边框 × ${s.videos.length} 条视频</div>
+        </div>
+        ${overCap ? `<div style="margin-top:8px; font-size:12px; color:#f87171;">⚠ 已超出上限，请减少边框变体或视频数量，使乘积 ≤ ${FRAME_CAP}</div>` : ''}
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:4px; padding-bottom:40px;">
+        <button class="btn btn-ghost" onclick="closeToolDetail()">取消</button>
+        <button class="btn btn-primary" ${canSubmit ? '' : 'disabled'} onclick="_frameSubmit()">批量合成</button>
+      </div>
+    </div>
+  `;
+}
+
+function _frameRender() {
+  const el = document.getElementById('ws-tab-content');
+  if (!el) return;
+  el.innerHTML = renderToolDetailPage('tool-frame');
+}
+
+function _frameAddBatch() {
+  _frameState.frames.push({
+    id: _frameState.nextFrameId++,
+    prompt: '',
+    refImg: null,
+    status: 'idle',
+    variants: [],
+  });
+  _frameRender();
+}
+
+function _frameRemoveBatch(id) {
+  _frameState.frames = _frameState.frames.filter(f => f.id !== id);
+  _frameRender();
+}
+
+function _frameUpdatePrompt(id, val) {
+  const f = _frameState.frames.find(f => f.id === id);
+  if (f) f.prompt = val;
+}
+
+function _frameUploadRef(id, input) {
+  const f = _frameState.frames.find(f => f.id === id);
+  if (f && input.files[0]) { f.refImg = input.files[0].name; _frameRender(); }
+}
+
+function _frameGenerate(id) {
+  const f = _frameState.frames.find(f => f.id === id);
+  if (!f) return;
+  if (!f.prompt.trim() && !f.refImg) { toast('请先填写边框描述或上传参考图'); return; }
+  f.status = 'generating';
+  f.variants = [];
+  _frameRender();
+  setTimeout(() => {
+    const baseHue = 20 + Math.floor(Math.random() * 300);
+    f.variants = [1, 2, 3, 4].map((idx) => ({
+      id: 'v-' + f.id + '-' + idx,
+      idx,
+      hue: (baseHue + idx * 28) % 360,
+      selected: true,
+    }));
+    f.status = 'done';
+    _frameRender();
+  }, 1400);
+}
+
+function _frameToggleVariant(batchId, variantId, el) {
+  const f = _frameState.frames.find(f => f.id === batchId);
+  if (!f) return;
+  const v = f.variants.find(v => v.id === variantId);
+  if (v) v.selected = !v.selected;
+  _frameRender();
+}
+
+function _frameUploadVideos(input) {
+  Array.from(input.files).forEach(file => {
+    _frameState.videos.push({
+      id: 'vid-' + _frameState.nextVideoId++,
+      name: file.name,
+      hue: 160 + Math.floor(Math.random() * 200),
+    });
+  });
+  _frameRender();
+}
+
+function _frameRemoveVideo(id) {
+  _frameState.videos = _frameState.videos.filter(v => v.id !== id);
+  _frameRender();
+}
+
+function _frameSetLayout(layout) {
+  _frameState.layout = layout;
+  _frameRender();
+}
+
+function _frameSubmit() {
+  const product = _frameVideoProduct();
+  if (product === 0 || product > FRAME_CAP) return;
+  const taskId = 'T-FRAME-' + Date.now();
+  const taskName = (document.querySelector('.tool-form-area .form-card input[type="text"]')?.value || '批量套边框') || '批量套边框';
+  const task = {
+    id: taskId,
+    toolId: 'tool-frame',
+    name: taskName,
+    status: 'generating',
+    source: 'toolbox',
+    toolName: '批量套边框',
+    product: taskName,
+    outputSummary: '生成中…',
+    createdAt: new Date().toLocaleString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }).replace(/\//g,'-'),
+    duration: null,
+    videoModel: null,
+    outputTypes: ['video'],
+    ownerId: currentUser.id,
+    detailSections: [
+      { title: '任务基本信息', fields: [{ label: '任务名称', value: taskName }] },
+      { title: '合成设置', fields: [
+        { label: '布局', value: _frameState.layout === 'center' ? '居中布局' : '角落布局' },
+        { label: '边框变体数', value: String(_frameCount()) },
+        { label: '视频数', value: String(_frameState.videos.length) },
+        { label: '预计出片', value: product + ' 条' },
+      ]},
+    ],
+    outputs: Array.from({ length: product }, (_, i) => ({
+      name: '套框_' + String(i + 1).padStart(3, '0') + '.mp4',
+      status: 'done',
+      duration: Math.floor(15 + Math.random() * 30) + ' 秒',
+      actions: ['播放', '下载'],
+    })),
+  };
+  MOCK_TASKS.unshift(task);
+  // 重置状态
+  _frameState = { frames: [], videos: [], layout: 'center', nextFrameId: 1, nextVideoId: 1 };
+  closeToolDetail();
+  goPage('tasks');
+  setTimeout(() => {
+    currentTaskDetailId = taskId;
+    renderTaskCenter();
+    setTimeout(() => {
+      task.status = 'completed';
+      task.duration = Math.floor(20 + product * 8) + ' 秒';
+      task.outputSummary = product + ' 条已完成';
+      renderTaskCenter();
+    }, 2000);
+  }, 200);
+  toast('✅ 批量套边框任务已提交，跳转至任务中心');
 }

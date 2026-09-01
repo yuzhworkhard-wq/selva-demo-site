@@ -17,6 +17,7 @@ import { buildMixes, countMixes, durationBands, fmtTime, minMaterials, parseCloc
    素材池可多传；每次点生成，从池里勾选的素材里最多用 MAX_ACTIVE 条做排列。 */
 
 const MAX_ACTIVE = 6;   // 单次合成勾选上限（不是素材池上限）
+const MAX_EXPORT = 20;  // 一次导出到任务中心上限，避免压垮服务端
 
 const TRANSITIONS = [
   { value: 'fade', label: '淡入淡出', desc: '前段渐隐、后段渐显' },
@@ -34,7 +35,6 @@ const LIMIT_OPTS = [
   { value: 10, label: '产出 10 条' },
   { value: 20, label: '产出 20 条' },
   { value: 50, label: '产出 50 条' },
-  { value: 0, label: '产出不限' },
 ];
 const TIPS = [
   { icon: Film, text: `合成勾选最多 ${MAX_ACTIVE} 条` },
@@ -143,6 +143,74 @@ function captureCover(url) {
     video.src = url;
     video.currentTime = 0.1;
   });
+}
+
+function probeAudioDuration(url) {
+  return new Promise(resolve => {
+    const audio = document.createElement('audio');
+    audio.preload = 'metadata';
+    let done = false;
+    const finish = d => { if (!done) { done = true; resolve(d || 0); } };
+    audio.onloadedmetadata = () => finish(audio.duration);
+    audio.onerror = () => finish(0);
+    setTimeout(() => finish(audio.duration || 0), 2500);
+    audio.src = url;
+  });
+}
+
+/** 左栏底部配乐轨：分段宽度 = 各视频时长比例，底色条 = 配乐覆盖长度 */
+function BgmTrack({ bgm, materials, shortHint = '', onClear }) {
+  const videoTotal = materials.reduce((sum, m) => sum + (m.duration || 0), 0);
+  const audioDur = bgm.duration || 0;
+  const span = Math.max(videoTotal, audioDur, 0.001);
+  const coverPct = Math.min(100, (audioDur / span) * 100);
+  const short = !!shortHint;
+  return (
+    <div className={`mix-bgm-track ${short ? 'is-short' : ''}`} role="group" aria-label="配乐轨道">
+      <span className="mix-bgm-track-lab" title="配乐">
+        <Music size={12} strokeWidth={1.8} />
+      </span>
+      <div className="mix-bgm-track-body">
+        <div className="mix-bgm-track-rail">
+          {audioDur > 0 && (
+            <span
+              className="mix-bgm-fill"
+              style={{ width: `${coverPct}%` }}
+              aria-hidden="true"
+            />
+          )}
+          {materials.length === 0 ? (
+            <span className="mix-bgm-seg mix-bgm-seg--solo" style={{ flexGrow: 1 }}>
+              <em>上传视频后按时长对齐分段</em>
+            </span>
+          ) : materials.map((mat, i) => {
+            const w = Math.max(((mat.duration || 0) / span) * 100, 0.5);
+            return (
+              <span
+                key={mat.id}
+                className={`mix-bgm-seg tone-${String.fromCharCode(97 + (i % 5))}`}
+                style={{ flexGrow: w, flexBasis: 0 }}
+                title={`${mat.name} · ${fmtTime(mat.duration || 0)}`}
+              >
+                <em>{shortName(mat.name) || `片段 ${i + 1}`}</em>
+              </span>
+            );
+          })}
+        </div>
+        <div className="mix-bgm-track-meta">
+          <span className="mix-bgm-track-name" title={bgm.name}>{bgm.name}</span>
+          <span className={`mix-bgm-track-time ${short ? 'is-warn' : ''}`}>
+            {short
+              ? shortHint
+              : `${fmtTime(audioDur)}${videoTotal > 0 ? ` · 视频 ${fmtTime(videoTotal)}` : ''}`}
+          </span>
+        </div>
+      </div>
+      <button type="button" className="mix-bgm-track-x" onClick={onClear} aria-label="移除配乐" title="移除配乐">
+        <X size={12} />
+      </button>
+    </div>
+  );
 }
 
 /* 底栏下拉：与视频生成底栏的参数选择器同一套 idea-pick */
@@ -367,27 +435,53 @@ function TrackClip({
   mat, index, lead, active, activeRank, canActivate,
   dragging, onToggleActive, onRemove, onDragStart, onDrop, onDragEnd,
 }) {
+  const didDrag = useRef(false);
+  const blocked = !active && !canActivate;
+  const toggle = () => {
+    if (blocked) return;
+    onToggleActive();
+  };
   return (
     <div
-      className={`mix-clip ${active ? 'is-active' : ''} ${lead ? 'is-lead' : ''} ${dragging ? 'is-dragging' : ''}`}
+      className={`mix-clip ${active ? 'is-active' : ''} ${lead ? 'is-lead' : ''} ${dragging ? 'is-dragging' : ''} ${blocked ? 'is-blocked' : ''}`}
       draggable
-      onDragStart={e => { onDragStart(mat.id); e.dataTransfer.effectAllowed = 'move'; }}
+      role="checkbox"
+      aria-checked={active}
+      aria-disabled={blocked}
+      tabIndex={0}
+      onClick={() => {
+        if (didDrag.current) { didDrag.current = false; return; }
+        toggle();
+      }}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      }}
+      onDragStart={e => {
+        didDrag.current = true;
+        onDragStart(mat.id);
+        e.dataTransfer.effectAllowed = 'move';
+      }}
       onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('is-over'); }}
       onDragLeave={e => e.currentTarget.classList.remove('is-over')}
       onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('is-over'); onDrop(mat.id); }}
       onDragEnd={e => { e.currentTarget.classList.remove('is-over'); onDragEnd(); }}
-      title={lead ? `${mat.name}（片头锁定）` : active ? `${mat.name} · 参与合成 · 拖动调整顺序` : `${mat.name} · 勾选后参与合成`}
+      title={
+        blocked ? `${mat.name} · 单次合成最多勾选 ${MAX_ACTIVE} 条`
+          : lead ? `${mat.name}（片头锁定）· 点击取消勾选 · 拖动调整顺序`
+            : active ? `${mat.name} · 点击取消勾选 · 拖动调整顺序`
+              : `${mat.name} · 点击勾选参与合成`
+      }
     >
       <label
-        className={`mix-clip-pick ${!active && !canActivate ? 'is-blocked' : ''}`}
+        className={`mix-clip-pick ${blocked ? 'is-blocked' : ''}`}
         onClick={e => e.stopPropagation()}
         onMouseDown={e => e.stopPropagation()}
-        title={!active && !canActivate ? `单次合成最多勾选 ${MAX_ACTIVE} 条` : (active ? '取消参与合成' : '勾选参与合成')}
+        title={blocked ? `单次合成最多勾选 ${MAX_ACTIVE} 条` : (active ? '取消参与合成' : '勾选参与合成')}
       >
         <input
           type="checkbox"
           checked={active}
-          disabled={!active && !canActivate}
+          disabled={blocked}
           onChange={onToggleActive}
           aria-label={active ? `取消勾选 ${mat.name}` : `勾选 ${mat.name} 参与合成`}
         />
@@ -401,7 +495,12 @@ function TrackClip({
         {lead && <span className="mix-clip-lead">片头</span>}
         <span className="mix-clip-time">{fmtTime(mat.duration)}</span>
         <GripVertical size={12} className="mix-clip-grip" aria-hidden="true" />
-        <button type="button" className="idea-chip-close mix-clip-x" onClick={() => onRemove(mat.id)} aria-label={`移除 ${mat.name}`}>
+        <button
+          type="button"
+          className="idea-chip-close mix-clip-x"
+          onClick={e => { e.stopPropagation(); onRemove(mat.id); }}
+          aria-label={`移除 ${mat.name}`}
+        >
           <X size={10} />
         </button>
       </span>
@@ -410,7 +509,7 @@ function TrackClip({
   );
 }
 
-export function BatchMixModal({ onClose, onRestart, visible = true, embedded = false }) {
+export function BatchMixModal({ onClose, onRestart, visible = true, embedded = false, onSubmitTask = null }) {
   const [materials, setMaterials] = useState([]);
   const [activeIds, setActiveIds] = useState(() => new Set()); // 勾选参与本次合成，≤ MAX_ACTIVE
   const [bgm, setBgm] = useState(null);
@@ -427,12 +526,21 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
   const [previewAt, setPreviewAt] = useState(null); // flatShown 下标
   const [dragId, setDragId] = useState(null);
   const [selected, setSelected] = useState(() => new Set());   // 跨批勾选导出
+  const [exporting, setExporting] = useState(false);
+  const [toast, setToast] = useState(null);
   const rootRef = useRef(null);
   const poolInputRef = useRef(null);
   const resultRef = useRef(null);
   const wasVisible = useRef(visible);
   const batchesRef = useRef(batches);
   batchesRef.current = batches;
+  const toastTimer = useRef(null);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+  const showToast = msg => {
+    setToast(msg);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3200);
+  };
 
   const activeMaterials = useMemo(
     () => materials.filter(m => activeIds.has(m.id)),
@@ -441,7 +549,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
   const hasProgress = materials.length > 0 || batches.length > 0;
   const total = countMixes(activeMaterials.length, segments, leadLock);
   const need = minMaterials(segments);
-  const willMake = total ? (limit > 0 ? Math.min(total, limit) : total) : 0;
+  const willMake = total ? Math.min(total, limit) : 0;
   const allMixes = useMemo(() => batches.flatMap(b => b.mixes), [batches]);
   const bands = useMemo(() => durationBands(allMixes), [allMixes]);
   const flatShown = useMemo(() => {
@@ -471,7 +579,19 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
   }, [flatShown]);
   const transitionLabel = TRANSITIONS.find(t => t.value === transition)?.label || '';
   const poolDuration = materials.reduce((sum, m) => sum + (m.duration || 0), 0);
-  const allPicked = flatShown.length > 0 && flatShown.every(r => selected.has(r.key));
+  const exportCap = Math.min(flatShown.length, MAX_EXPORT);
+  const shownSelected = flatShown.filter(r => selected.has(r.key)).length;
+  const allPicked = flatShown.length > 0 && shownSelected >= exportCap;
+  const atExportCap = selected.size >= MAX_EXPORT;
+  const selectedRows = useMemo(
+    () => flatShown.filter(r => selected.has(r.key)),
+    [flatShown, selected],
+  );
+  const maxSelectedDur = selectedRows.length
+    ? Math.max(...selectedRows.map(r => r.mix.duration || 0))
+    : 0;
+  /* 有配乐时：音频必须盖住所选成片最长时长，否则不允许导出 */
+  const bgmTooShort = !!(bgm && selected.size > 0 && (bgm.duration || 0) + 0.05 < maxSelectedDur);
   const durRange = flatShown.length
     ? (() => {
       const list = flatShown.map(r => r.mix.duration);
@@ -491,18 +611,27 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
   };
   const togglePick = key => setSelected(prev => {
     const next = new Set(prev);
-    if (next.has(key)) next.delete(key); else next.add(key);
+    if (next.has(key)) next.delete(key);
+    else if (next.size < MAX_EXPORT) next.add(key);
     return next;
   });
   const toggleAll = () => setSelected(prev => (
-    allPicked ? new Set() : new Set(flatShown.map(r => r.key))
+    allPicked
+      ? new Set()
+      : new Set(flatShown.slice(0, MAX_EXPORT).map(r => r.key))
   ));
   const toggleBatchPick = (batchId, keys) => {
     setSelected(prev => {
       const next = new Set(prev);
       const allOn = keys.length > 0 && keys.every(k => next.has(k));
       if (allOn) keys.forEach(k => next.delete(k));
-      else keys.forEach(k => next.add(k));
+      else {
+        for (const k of keys) {
+          if (next.has(k)) continue;
+          if (next.size >= MAX_EXPORT) break;
+          next.add(k);
+        }
+      }
       return next;
     });
   };
@@ -555,12 +684,19 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
     revokeBlob(bgmRef.current?.url);
   }, []);
 
+  const applyBgmFile = useCallback(file => {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setBgm(prev => { revokeBlob(prev?.url); return { name: file.name, url, duration: 0 }; });
+    probeAudioDuration(url).then(duration => {
+      setBgm(cur => (cur?.url === url ? { ...cur, duration } : cur));
+    });
+  }, []);
+
   const addFiles = useCallback(fileList => {
     const files = Array.from(fileList || []);
     const audio = files.find(f => (f.type || '').startsWith('audio/'));
-    if (audio) {
-      setBgm(prev => { revokeBlob(prev?.url); return { name: audio.name, url: URL.createObjectURL(audio) }; });
-    }
+    if (audio) applyBgmFile(audio);
     const videos = files.filter(f => (f.type || '').startsWith('video/'));
     if (!videos.length) return;
     setMaterials(prev => {
@@ -577,14 +713,10 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
           setMaterials(cur => cur.map(m => (m.id === mat.id ? { ...m, cover: cover || m.cover, duration: duration || m.duration } : m)));
         });
       });
-      // 池空时自动勾选前 MAX_ACTIVE 条，降低「忘了勾选」的空操作
-      setActiveIds(cur => {
-        if (cur.size > 0 || prev.length > 0) return cur;
-        return new Set(added.slice(0, MAX_ACTIVE).map(m => m.id));
-      });
+      // 上传后不默认勾选，由用户自行挑选参与合成的素材
       return [...prev, ...added];
     });
-  }, []);
+  }, [applyBgmFile]);
 
   const addFromLibrary = useCallback(items => {
     setMaterials(prev => {
@@ -599,10 +731,6 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
           cover: item.cover,
           duration: parseClock(item.meta),
         }));
-      setActiveIds(cur => {
-        if (cur.size > 0 || prev.length > 0) return cur;
-        return new Set(added.slice(0, MAX_ACTIVE).map(m => m.id));
-      });
       return [...prev, ...added];
     });
   }, []);
@@ -664,6 +792,53 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
     }, 900);
   };
 
+  const exportToTaskCenter = () => {
+    if (!selected.size || bgmTooShort || exporting) return;
+    const rows = selectedRows;
+    const n = rows.length;
+    if (!n) return;
+    setExporting(true);
+    const variants = rows.map(row => ({
+      id: row.mix.id,
+      seq: row.mix.seq,
+      duration: row.mix.duration,
+      clips: row.mix.seq.map(id => {
+        const m = row.batch.matsById[id];
+        return m ? {
+          id: m.id, name: m.name, url: m.url, cover: m.cover, duration: m.duration,
+        } : null;
+      }).filter(Boolean),
+      transition: row.batch.transition,
+      transitionLabel: row.batch.transitionLabel,
+      leadLock: row.batch.leadLock,
+      segments: row.batch.segments,
+    }));
+    const firstUrl = variants[0]?.clips?.[0]?.url || 'test-clip.mp4';
+    setTimeout(() => {
+      if (onSubmitTask) {
+        onSubmitTask({
+          name: n > 1 ? `批量混剪 · ${n} 条` : '批量混剪',
+          videoUrl: firstUrl,
+          variants,
+          promptHtml: '',
+          promptText: variants.map((v, i) => (
+            `成片 ${i + 1}: ${v.clips.map(c => c.name).join(' → ')}`
+          )).join('\n'),
+          mixMeta: {
+            bgm: bgm ? { name: bgm.name, duration: bgm.duration || 0 } : null,
+            keepVoice: !!bgm && keepVoice,
+          },
+          region: '—',
+          toolName: '批量混剪',
+          status: 'generating',
+        });
+      }
+      setSelected(new Set());
+      setExporting(false);
+      showToast(n > 1 ? `${n} 条视频已提交至任务中心生成` : '1 条视频已提交至任务中心生成');
+    }, 700);
+  };
+
   const previewRow = previewAt !== null ? flatShown[previewAt] : null;
 
   return (
@@ -683,6 +858,11 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
           </div>
           <button className="icon-btn" onClick={exit} title="关闭"><X size={18} /></button>
         </div>
+        {toast && (
+          <div className="ctd-toast ctd-toast--lg">
+            <Check size={17} strokeWidth={2.2} /> {toast}
+          </div>
+        )}
         <div className="clone-page-body">
           <div className="clone-page-inner">
             {/* 工作台：左边看成片，右边配素材与规则。素材一多，结果区一屏能扫完。
@@ -729,7 +909,9 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                           const rows = rowsByBatch.get(batch.id) || [];
                           const keys = rows.map(r => r.key);
                           const batchAll = keys.length > 0 && keys.every(k => selected.has(k));
+                          const batchAny = keys.some(k => selected.has(k));
                           const batchN = batches.length - batchOrd;
+                          const batchPickBlocked = !batchAll && !batchAny && atExportCap;
                           return (
                             <div key={batch.id} className={`mix-batch ${batch.collapsed ? 'is-collapsed' : ''}`}>
                               <div className="mix-batch-head">
@@ -745,11 +927,15 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                                     {batch.leadLock ? ' · 片头锁定' : ''}
                                   </em>
                                 </button>
-                                <label className="mix-tick mix-batch-tick" onClick={e => e.stopPropagation()}>
+                                <label
+                                  className={`mix-tick mix-batch-tick ${batchPickBlocked ? 'is-blocked' : ''}`}
+                                  onClick={e => e.stopPropagation()}
+                                  title={batchPickBlocked ? `一次最多导出 ${MAX_EXPORT} 条` : undefined}
+                                >
                                   <input
                                     type="checkbox"
                                     checked={batchAll}
-                                    disabled={!keys.length}
+                                    disabled={!keys.length || batchPickBlocked}
                                     onChange={() => toggleBatchPick(batch.id, keys)}
                                     aria-label={`全选第 ${batchN} 批`}
                                   />
@@ -769,6 +955,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                                       const { mix, key, flatIndex } = row;
                                       const names = mix.seq.map(id => batch.matsById[id]?.name || '?').join(' → ');
                                       const on = selected.has(key);
+                                      const pickBlocked = !on && atExportCap;
                                       const coverMat = batch.matsById[mix.seq[0]];
                                       return (
                                         <div
@@ -777,8 +964,18 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                                           onClick={() => setPreviewAt(flatIndex)}
                                           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPreviewAt(flatIndex); } }}
                                         >
-                                          <label className="mix-tick mix-row-tick" onClick={e => e.stopPropagation()}>
-                                            <input type="checkbox" checked={on} onChange={() => togglePick(key)} aria-label={`选择 ${names}`} />
+                                          <label
+                                            className={`mix-tick mix-row-tick ${pickBlocked ? 'is-blocked' : ''}`}
+                                            onClick={e => e.stopPropagation()}
+                                            title={pickBlocked ? `一次最多导出 ${MAX_EXPORT} 条` : undefined}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={on}
+                                              disabled={pickBlocked}
+                                              onChange={() => togglePick(key)}
+                                              aria-label={`选择 ${names}`}
+                                            />
                                             <span className="mix-tick-box"><Check size={11} strokeWidth={3} /></span>
                                           </label>
 
@@ -842,18 +1039,29 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                           <>
                             <Layers size={26} strokeWidth={1.3} />
                             <p>右边勾选素材并配好规则，点「生成 {willMake} 条成片」出片</p>
-                            <span>已勾选 {activeMaterials.length}/{MAX_ACTIVE}，可拼出 {total} 条</span>
+                            <span>已勾选 {activeMaterials.length}/{MAX_ACTIVE}{willMake > 0 ? `，本次将生成 ${willMake} 条` : ''}</span>
                           </>
                         )}
                       </div>
                     )}
                   </div>
 
+                  {bgm && (
+                    <BgmTrack
+                      bgm={bgm}
+                      materials={materials}
+                      shortHint={bgmTooShort
+                        ? `配乐 ${fmtTime(bgm.duration || 0)} 短于所选成片（最长 ${fmtTime(maxSelectedDur)}），无法导出`
+                        : ''}
+                      onClear={() => { revokeBlob(bgm.url); setBgm(null); }}
+                    />
+                  )}
+
                   <footer className="mix-out-foot">
-                    <label className="mix-tick mix-tick--all">
+                    <label className="mix-tick mix-tick--all" title={`一次最多导出 ${MAX_EXPORT} 条到任务中心`}>
                       <input type="checkbox" checked={allPicked} onChange={toggleAll} disabled={!flatShown.length} aria-label="全选" />
                       <span className="mix-tick-box"><Check size={11} strokeWidth={3} /></span>
-                      <span className="mix-foot-txt">已选 {selected.size} 个</span>
+                      <span className="mix-foot-txt">已选 {selected.size}/{MAX_EXPORT}</span>
                     </label>
                     <div className="mix-out-foot-r">
                       {bands.length > 1 && (
@@ -863,8 +1071,20 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                           onChange={setBand}
                         />
                       )}
-                      <button type="button" className="btn-primary" disabled={!selected.size}>
-                        导出视频{selected.size ? ` (${selected.size})` : ''}
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={!selected.size || bgmTooShort || exporting}
+                        title={
+                          bgmTooShort
+                            ? `配乐短于所选成片（最长 ${fmtTime(maxSelectedDur)}），请更换更长配乐或取消勾选过长成片`
+                            : undefined
+                        }
+                        onClick={exportToTaskCenter}
+                      >
+                        {exporting
+                          ? <><Loader2 size={14} className="spinner" /> 提交中…</>
+                          : <>导出到任务中心{selected.size ? ` (${selected.size})` : ''}</>}
                       </button>
                     </div>
                   </footer>
@@ -934,21 +1154,6 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                     </div>
                   </div>
 
-                  {/* 配置即算量：改任一项，这块立刻跟着变 */}
-                  <div className="mix-meter-card">
-                    <div className="mix-meter-top">
-                      <span className="mix-meter-n">{total}</span>
-                      <span className="mix-meter-unit">条可生成</span>
-                    </div>
-                    <p className="mix-meter-desc">
-                      已勾选 {activeMaterials.length} 条按不同顺序拼成 {segments} 段成片
-                      {leadLock ? '，第一段锁定为片头' : ''}
-                    </p>
-                    {total > 0 && (
-                      <p className="mix-meter-out">本次产出 <b>{willMake}</b> 条{limit > 0 && total > limit ? `（上限 ${limit} 条）` : ''}</p>
-                    )}
-                  </div>
-
                   {warn && (
                     <div className="composer-warn" role="alert">
                       <AlertCircle size={13} strokeWidth={2} /><span>{warn}</span>
@@ -970,7 +1175,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                     <MoreSettings
                       leadLock={leadLock} onLeadLock={setLeadLock}
                       bgm={bgm}
-                      onBgmFile={file => setBgm(prev => { revokeBlob(prev?.url); return { name: file.name, url: URL.createObjectURL(file) }; })}
+                      onBgmFile={applyBgmFile}
                       onBgmClear={() => { revokeBlob(bgm?.url); setBgm(null); }}
                       keepVoice={keepVoice} onKeepVoice={setKeepVoice}
                     />
