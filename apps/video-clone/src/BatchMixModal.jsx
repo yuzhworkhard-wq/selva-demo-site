@@ -6,6 +6,7 @@ import {
   Plus, SkipBack, SkipForward, SlidersHorizontal, Trash2, Upload, Video, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { notifyHostModal } from './hostModal';
+import { ExportTaskDialog } from './ExportTaskDialog';
 import { buildMixes, countMixes, durationBands, fmtTime, minMaterials, parseClock } from './mixEngine.mjs';
 
 /* ── 批量混剪 ──
@@ -13,7 +14,7 @@ import { buildMixes, countMixes, durationBands, fmtTime, minMaterials, parseCloc
    混剪拼的是整条片子的结构，所以这里的差异来源是**顺序**，不是画面参数。
 
    控件、色板、弹窗与视频克隆 / 生成 / 裂变同一套（clone-page、idea-pick、fo-preset、up-dialog）。
-   布局是左右两栏：左边按「生成批次」折叠看成片，右边是素材池 + 勾选参与合成 + 规则。
+   布局是左右两栏：左边是素材池 + 勾选参与合成 + 规则，右边按「生成批次」折叠看成片。
    素材池可多传；每次点生成，从池里勾选的素材里最多用 MAX_ACTIVE 条做排列。 */
 
 const MAX_ACTIVE = 6;   // 单次合成勾选上限（不是素材池上限）
@@ -46,6 +47,14 @@ const TIPS = [
 const SEG_TAG_TONES = ['tone-a', 'tone-b', 'tone-c', 'tone-d', 'tone-e'];
 
 const shortName = name => (name || '').replace(/\.[^.]+$/, '').slice(0, 8);
+
+/** 导出默认任务名：混剪-月日-转场，方便任务中心一眼区分多批 */
+function defaultMixTaskName(transitionLabel) {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `混剪-${mm}${dd}-${transitionLabel || '成片'}`;
+}
 
 const ADD_REF_POP_EST = { w: 248, h: 156 };
 const VIEW_MARGIN = 8;
@@ -527,6 +536,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
   const [dragId, setDragId] = useState(null);
   const [selected, setSelected] = useState(() => new Set());   // 跨批勾选导出
   const [exporting, setExporting] = useState(false);
+  const [exportAsk, setExportAsk] = useState(false);
   const [toast, setToast] = useState(null);
   const rootRef = useRef(null);
   const poolInputRef = useRef(null);
@@ -668,12 +678,12 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
     if (!visible) return undefined;
     const onKey = e => {
       if (e.key !== 'Escape') return;
-      if (libOpen || resumeAsk || previewAt !== null) return;   // 各自的层自己收 Esc
+      if (libOpen || resumeAsk || previewAt !== null || exportAsk) return;   // 各自的层自己收 Esc
       exit();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [visible, libOpen, resumeAsk, previewAt, exit]);
+  }, [visible, libOpen, resumeAsk, previewAt, exportAsk, exit]);
 
   const matsRef = useRef(materials);
   matsRef.current = materials;
@@ -792,8 +802,10 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
     }, 900);
   };
 
-  const exportToTaskCenter = () => {
+  const exportToTaskCenter = name => {
     if (!selected.size || bgmTooShort || exporting) return;
+    const trimmed = (name || '').trim();
+    if (!trimmed) return;
     const rows = selectedRows;
     const n = rows.length;
     if (!n) return;
@@ -817,7 +829,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
     setTimeout(() => {
       if (onSubmitTask) {
         onSubmitTask({
-          name: n > 1 ? `批量混剪 · ${n} 条` : '批量混剪',
+          name: trimmed,
           videoUrl: firstUrl,
           variants,
           promptHtml: '',
@@ -835,6 +847,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
       }
       setSelected(new Set());
       setExporting(false);
+      setExportAsk(false);
       showToast(n > 1 ? `${n} 条视频已提交至任务中心生成` : '1 条视频已提交至任务中心生成');
     }, 700);
   };
@@ -865,7 +878,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
         )}
         <div className="clone-page-body">
           <div className="clone-page-inner">
-            {/* 工作台：左边看成片，右边配素材与规则。素材一多，结果区一屏能扫完。
+            {/* 工作台：左边配素材与规则，右边看成片。素材一多，结果区一屏能扫完。
                  多素材工具没有独立欢迎页——素材池要反复加删排序，开场就该是它自己 */}
             <div className="mix-work" ref={resultRef}>
                 <section className="mix-out">
@@ -1028,7 +1041,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                               <Layers size={40} strokeWidth={1.2} />
                             </span>
                             <h3 className="mix-out-empty-title">同品牌素材，批量成片</h3>
-                            <p>素材池可多传，勾选最多 {MAX_ACTIVE} 条参与合成；每次生成在左侧落成一批</p>
+                            <p>素材池可多传，勾选最多 {MAX_ACTIVE} 条参与合成；每次生成在右侧落成一批</p>
                             <div className="upload-tips">
                               {TIPS.map(tip => (
                                 <span key={tip.text} className="upload-tip"><tip.icon size={13} strokeWidth={1.8} />{tip.text}</span>
@@ -1038,7 +1051,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                         ) : (
                           <>
                             <Layers size={26} strokeWidth={1.3} />
-                            <p>右边勾选素材并配好规则，点「生成 {willMake} 条成片」出片</p>
+                            <p>左边勾选素材并配好规则，点「生成 {willMake} 条成片」出片</p>
                             <span>已勾选 {activeMaterials.length}/{MAX_ACTIVE}{willMake > 0 ? `，本次将生成 ${willMake} 条` : ''}</span>
                           </>
                         )}
@@ -1080,7 +1093,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                             ? `配乐短于所选成片（最长 ${fmtTime(maxSelectedDur)}），请更换更长配乐或取消勾选过长成片`
                             : undefined
                         }
-                        onClick={exportToTaskCenter}
+                        onClick={() => setExportAsk(true)}
                       >
                         {exporting
                           ? <><Loader2 size={14} className="spinner" /> 提交中…</>
@@ -1198,6 +1211,19 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
           chosenIds={materials.map(m => m.libId).filter(Boolean)}
           onConfirm={addFromLibrary}
           onClose={() => setLibOpen(false)}
+        />
+      )}
+
+      {exportAsk && (
+        <ExportTaskDialog
+          open={exportAsk}
+          onClose={() => !exporting && setExportAsk(false)}
+          onConfirm={exportToTaskCenter}
+          defaultName={defaultMixTaskName(transitionLabel)}
+          placeholder="如：消除游戏-春季混剪"
+          count={selected.size}
+          toolLabel="批量混剪"
+          submitting={exporting}
         />
       )}
 

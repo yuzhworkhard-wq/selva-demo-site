@@ -283,7 +283,7 @@ function CloneSidebar({ onHome }) {
 }
 
 /* ── 紧凑下拉 Picker（输入卡控件用，真菜单）── */
-function Picker({ icon: Icon, value, options, onChange, align = 'left', title, up = false }) {
+export function Picker({ icon: Icon, value, options, onChange, align = 'left', title, up = false }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {

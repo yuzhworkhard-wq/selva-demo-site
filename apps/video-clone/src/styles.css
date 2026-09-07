@@ -6763,8 +6763,9 @@ body {
   padding: 0;
 }
 
-/* ── 右：素材池 + 算量 + 参数 + 生成 ── */
+/* ── 左：素材池 + 算量 + 参数 + 生成（输入在左、成片在右） ── */
 .mix-side {
+  order: -1;
   flex: 0 0 340px; min-width: 0; min-height: 0;
   display: flex; flex-direction: column; gap: 12px;
 }
@@ -7059,7 +7060,12 @@ body {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 11px 18px; border-top: 1px solid var(--border); background: var(--bg-page); flex-shrink: 0;
 }
-.mix-out-foot-r { display: flex; align-items: center; gap: 8px; }
+.mix-out-foot-r { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.mix-export-hint {
+  margin: 0 0 14px; font-size: 13px; line-height: 1.55; color: var(--text-secondary);
+}
+.mix-export-field { margin: 0; }
 
 /* ── 转场下拉：每个选项自带一段迷你演示 ── */
 .mix-trans-opt { display: flex; align-items: center; gap: 10px; }
@@ -7130,7 +7136,7 @@ body {
 .mix-chip img { width: 18px; height: 18px; border-radius: 999px; object-fit: cover; flex-shrink: 0; }
 .mix-chip-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 窄屏：两栏落回一栏，成片在上、配置在下 */
+/* 窄屏：两栏落回一栏，配置在上、成片在下（仍是输入→产出） */
 @container (max-width: 780px) {
   .mix-work {
     flex-direction: column;
@@ -7295,15 +7301,17 @@ body {
 .bmd-gallery {
   flex: 1; min-height: 0; overflow: auto;
   padding: 12px 28px 32px;
+  width: 100%;
 }
 .bmd-gallery-empty {
   margin: 48px auto; text-align: center; color: var(--text-muted); font-size: 13px;
 }
 .bmd-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  /* 铺满可用宽度：列数随视口变，竖屏卡不会被 max-width 卡在左侧留白 */
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
   gap: 18px 14px;
-  max-width: 1100px;
+  width: 100%;
 }
 .bmd-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .bmd-card-cover {
@@ -7411,28 +7419,69 @@ body {
   width: 100%; height: 100%; object-fit: contain; display: block; vertical-align: top;
 }
 
-@media (min-width: 900px) {
-  .bmd-cards { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (min-width: 1280px) {
+  .bmd-cards { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
+  .bmd-gallery { padding: 14px 32px 36px; }
 }
-@media (max-width: 560px) {
-  .bmd-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 1600px) {
+  .bmd-cards { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+}
+@media (max-width: 720px) {
+  .bmd-cards { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
   .bmd-gallery { padding: 10px 16px 24px; }
 }
+@media (max-width: 480px) {
+  .bmd-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
-/* ════ 批量套边框（bfm-）════ */
+/* ════ 批量套边框（bfm-）════
+   高度跟视口走：顶栏 + 步骤条占掉后，shell 吃剩余空间；
+   底部 step-actions 常驻，不被结果区顶出屏外。 */
 
-.clone-page-body:has(.bfm-work) { overflow-y: auto; }
+.clone-page-body:has(.bfm-work) {
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .clone-page-inner:has(.bfm-work) {
-  height: auto; min-height: 0;
-  padding: 28px 40px 36px; box-sizing: border-box;
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  padding: 20px 40px 16px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+.bfm-shell {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 .bfm-work {
-  height: min(820px, calc(100vh - 110px));
-  min-height: 640px; min-width: 0;
-  display: flex; align-items: stretch; gap: 16px;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: row; /* DOM：左配置 → 右预览；第一步左=缩略图+输入 */
+  align-items: stretch;
+  gap: 16px;
+  /* 「这块是透明的」的统一画法：棋盘格。挖空的边框、空矩形都用它 */
+  --bfm-checker-bg: rgba(0, 0, 0, 0.42);
+  --bfm-checker:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.10) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.10) 75%),
+    linear-gradient(45deg, rgba(255, 255, 255, 0.10) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.10) 75%);
+}
+.bfm-step-actions {
+  flex-shrink: 0;
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 
-/* ── 左：结果区（复用 mix-out 结构） ── */
+/* ── 右：结果区（复用 mix-out 结构） ── */
 .bfm-out {
   flex: 1; min-width: 0; min-height: 0;
   display: flex; flex-direction: column;
@@ -7440,11 +7489,30 @@ body {
   background: var(--bg-surface); overflow: hidden;
 }
 
-/* ── 右：配置区 ── */
+/* ── 左：配置区，与右栏同高；内部面板自己滚，外层不裁切加号菜单 ── */
 .bfm-side {
   flex: 0 0 340px; min-width: 0; min-height: 0;
   display: flex; flex-direction: column; gap: 12px;
+  overflow: visible;
+}
+.bfm-side:has(.bfm-compose-bar) {
+  overflow: visible;
+}
+
+/* 第一步生成结果 / 第三步边框池：吃掉右栏剩余高度，左右卡片底边对齐 */
+.bfm-panel--grow {
+  flex: 1;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+}
+.bfm-panel--grow .bfm-pool-grid {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  /* 面板被拉高时，网格行不要被 stretch 成「一行一截空白」 */
+  align-content: start;
+  align-items: start;
 }
 
 /* 通用面板卡片 */
@@ -7459,115 +7527,423 @@ body {
 .bfm-panel-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .bfm-panel-hint { font-size: 11px; color: var(--text-muted); }
 
-/* 空态槽 */
-.bfm-empty-slot {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
-  margin: 12px; padding: 20px 16px;
-  border: 1.5px dashed var(--border-light); border-radius: var(--radius-md);
-  color: var(--text-muted); font-size: 12px; cursor: pointer; text-align: center;
-  transition: all var(--transition);
+.bfm-panel--vid .mix-pool-empty { min-height: 160px; }
+.bfm-panel--vid .mix-pool-empty .upload-card-btns {
+  flex-wrap: wrap;
+  justify-content: center;
 }
-.bfm-empty-slot:hover { border-color: var(--accent); background: var(--accent-subtle); color: var(--accent); }
 
-/* 边框批次列表 */
-.bfm-batch-list { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
-.bfm-batch-card {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 10px 12px;
+/* ── 第一步：生成边框 ── */
+.bfm-head-hint {
+  display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+  font-size: 11px; color: var(--accent);
+}
+.bfm-fixed-tag {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 8px;
+  border-radius: var(--radius-sm); color: var(--text-muted);
+  font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.bfm-batch-fail-note {
+  display: flex; align-items: flex-start; gap: 5px;
+  margin: 0; padding: 0 14px 14px;
+  font-size: 11px; line-height: 1.55; color: var(--text-muted);
+}
+.bfm-batch-fail-note svg { flex-shrink: 0; margin-top: 2px; color: var(--danger); }
+
+/* 生成结果网格：卡片要够大，竖版边框才能看清中间那块 */
+.bfm-shot-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 14px; padding: 12px 14px 16px;
+}
+/* 第一步左侧：紧凑缩略图，给右侧大预览腾空间 */
+.bfm-shot-grid--thumbs {
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 10px;
+  padding: 4px 12px 12px;
+}
+.bfm-shot-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; position: relative; }
+.bfm-shot-hit {
+  display: block; width: 100%; padding: 0; margin: 0;
+  border: none; background: transparent; cursor: pointer; text-align: left;
+  border-radius: var(--radius-sm);
+}
+.bfm-shot-wrap { position: relative; display: block; }
+.bfm-shot-card.is-failed .bfm-shot { opacity: 0.5; }
+.bfm-shot-card.is-selected .bfm-shot {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.bfm-shot-busy {
+  position: absolute; inset: 0; z-index: 3;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.45); color: #fff; border-radius: var(--radius-sm);
+}
+.bfm-shot-no {
+  position: absolute; bottom: 6px; right: 6px; z-index: 3;
+  font-size: 11px; font-weight: 700; color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.bfm-shot-rm {
+  position: absolute; top: 5px; right: 5px; z-index: 4;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.62); border: none; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; opacity: 0; transition: opacity var(--transition);
+}
+.bfm-shot-card:hover .bfm-shot-rm,
+.bfm-shot-card.is-selected .bfm-shot-rm { opacity: 1; }
+
+/* 第一步：左上缩略图池 + 左下 composer */
+.bfm-side--gen {
+  flex: 0 0 320px;
+}
+.bfm-gen-thumbs {
+  min-height: 0;
+  overflow: hidden;
+}
+.bfm-gen-thumbs-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.bfm-gen-thumbs-empty {
+  flex: 1;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.bfm-gen-thumbs-empty span {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.bfm-gen-thumbs-empty em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* 右侧大预览 */
+.bfm-gen-preview-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bfm-gen-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 8px 0 16px;
+}
+.bfm-gen-hero-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  width: 100%;
+}
+.bfm-gen-hero-frame {
+  position: relative;
+  width: 100%;
+  max-width: 260px;
+  flex: 0 1 auto;
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+.bfm-gen-hero-frame .bfm-shot {
+  border-radius: var(--radius-md);
+  border-width: 1px;
+}
+.bfm-gen-hero-frame .bfm-shot-no {
+  font-size: 13px;
+  bottom: 10px;
+  right: 10px;
+}
+
+/* 一张边框图。素材只存挖空版一份，差别全在垫在底下的东西：
+   原图 = 垫白底（中心看着还是实的，就是模型刚吐出来的样子）；
+   挖空后 = 垫棋盘格（透明），一眼看得出抠像干了什么。 */
+.bfm-shot {
+  position: relative; display: block; width: 100%;
+  aspect-ratio: 9 / 16;
+  border-radius: var(--radius-sm); overflow: hidden;
+  border: 2px solid var(--border-light);
+  background: #fff;
+  transition: border-color var(--transition), opacity var(--transition);
+}
+.bfm-shot-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bfm-shot--generating {
+  background: var(--bg-elevated);
+  animation: bfmShotPulse 1.1s ease-in-out infinite;
+}
+@keyframes bfmShotPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.9; } }
+.bfm-shot--cut {
+  background-color: var(--bfm-checker-bg);
+  background-image: var(--bfm-checker);
+  background-size: 10px 10px;
+  background-position: 0 0, 5px 5px;
+}
+.bfm-shot--failed { opacity: 0.5; }
+
+/* 状态行 */
+.bfm-shot-state { font-size: 11px; text-align: center; line-height: 1.4; }
+.bfm-state-raw { color: var(--text-muted); }
+.bfm-state-cutting { color: var(--accent); }
+.bfm-state-cut {
+  display: inline-flex; align-items: center; gap: 3px; color: var(--success);
+}
+.bfm-state-failed {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 0; border: none; background: transparent;
+  color: var(--danger); font-size: 10px; font-family: var(--font); cursor: pointer;
+}
+.bfm-state-failed:hover { text-decoration: underline; }
+
+/* ── 边框 + 视频矩形的叠放画布 ──
+   第二步舞台、缩略图条、第三步边框池与成片卡片全用这一套，所见即所得。
+   矩形是 9:16、画布也是 9:16，所以高度百分比 = 宽度百分比，一个 size 说完。 */
+.bfm-canvas {
+  position: relative; display: block; width: 100%;
+  aspect-ratio: 9 / 16; overflow: hidden;
+  border-radius: var(--radius-sm);
+  background-color: var(--bfm-checker-bg);
+  background-image: var(--bfm-checker);
+  background-size: 10px 10px;
+  background-position: 0 0, 5px 5px;
+}
+.bfm-canvas-img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; display: block;
+  transition: opacity var(--transition);
+}
+/* 透视：边框半透明，被它盖住的那截矩形也看得见，才判断得出超没超。
+   这时候把棋盘格收掉，透出来的画面才干净。 */
+.bfm-canvas.is-ghost { background-image: none; background-color: #17181a; }
+.bfm-canvas.is-ghost .bfm-canvas-img { opacity: 0.4; }
+.bfm-rect {
+  position: absolute; display: block; overflow: hidden;
+  background: #0c0d0f;
+}
+.bfm-rect-media { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bfm-rect-empty {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(255, 255, 255, 0.4);
+  background: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.06) 0 6px, transparent 6px 12px);
+}
+.bfm-rect-outline {
+  position: absolute; pointer-events: none;
+  border: 1.5px dashed var(--accent);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+/* ── 第二步：调整视频位置 ── */
+.bfm-place-body {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 14px 16px 14px; min-height: 0; overflow: hidden;
+}
+.bfm-stage-wrap {
+  flex: 1; min-height: 0; min-width: 0;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.bfm-stage {
+  position: relative; height: 100%; aspect-ratio: 9 / 16; max-width: 100%;
+  flex: 0 1 auto; touch-action: none; user-select: none;
+}
+.bfm-stage .bfm-canvas { height: 100%; }
+.bfm-nav {
+  flex: 0 0 auto; align-self: center;
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-secondary);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all var(--transition);
+}
+.bfm-nav:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.bfm-nav:disabled { opacity: 0.3; cursor: default; }
+.bfm-stage-hint {
+  flex-shrink: 0; margin: 0; text-align: center;
+  font-size: 11.5px; line-height: 1.55; color: var(--text-muted);
+}
+
+/* 拖动热区：整块可拖，四角缩放；焦点态支持方向键微调 */
+.bfm-rect-hit { position: absolute; cursor: grab; touch-action: none; outline: none; }
+.bfm-rect-hit.is-dragging { cursor: grabbing; }
+.bfm-rect-hit:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.bfm-handle {
+  position: absolute; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+.bfm-handle--nw { left: -7px; top: -7px; cursor: nwse-resize; }
+.bfm-handle--ne { right: -7px; top: -7px; cursor: nesw-resize; }
+.bfm-handle--sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
+.bfm-handle--se { right: -7px; bottom: -7px; cursor: nwse-resize; }
+
+/* 底部缩略图条：一次看完全部边框，不勾的淡掉 */
+.bfm-strip {
+  flex-shrink: 0; display: flex; gap: 8px;
+  overflow-x: auto; padding: 6px 2px 2px;
+}
+.bfm-strip-item {
+  position: relative; flex: 0 0 auto; width: 48px;
+  border-radius: var(--radius-sm);
+  opacity: 0.45; transition: opacity var(--transition), box-shadow var(--transition);
+}
+.bfm-strip-item.is-use { opacity: 1; }
+.bfm-strip-item.is-cur { box-shadow: 0 0 0 2px var(--accent); }
+.bfm-strip-hit {
+  display: block; width: 100%; padding: 0; border: none; background: none;
+  cursor: pointer; border-radius: var(--radius-sm); overflow: hidden;
+}
+.bfm-strip-tick { position: absolute; top: 3px; left: 3px; z-index: 3; }
+.bfm-strip-tick .mix-tick-box { background: rgba(0, 0, 0, 0.6); }
+.bfm-strip-no {
+  position: absolute; bottom: 3px; right: 4px; z-index: 3;
+  font-size: 9.5px; font-weight: 700; color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+}
+
+/* 矩形参数面板 */
+.bfm-place-ctl { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; }
+.bfm-ctl-row { display: flex; align-items: center; gap: 10px; }
+.bfm-ctl-row.is-off { opacity: 0.45; }
+.bfm-ctl-label { flex: 0 0 30px; font-size: 12px; color: var(--text-secondary); }
+.bfm-ctl-val {
+  flex: 0 0 38px; text-align: right; font-style: normal;
+  font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.bfm-ctl-note { margin: 0; font-size: 11px; line-height: 1.5; color: var(--text-muted); }
+.bfm-ctl-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.bfm-ctl-pos { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.bfm-seg {
+  flex: 1; display: flex;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden;
+}
+.bfm-seg-btn {
+  flex: 1; padding: 6px 4px; border: none; background: transparent;
+  color: var(--text-muted); font-size: 11.5px; font-family: var(--font);
+  cursor: pointer; transition: all var(--transition);
+}
+.bfm-seg-btn + .bfm-seg-btn { border-left: 1px solid var(--border); }
+.bfm-seg-btn:hover { color: var(--text-primary); }
+.bfm-seg-btn.is-on { background: var(--accent); color: #fff; }
+.bfm-range {
+  flex: 1; min-width: 0; height: 4px;
+  -webkit-appearance: none; appearance: none;
+  background: var(--bg-elevated); border-radius: 999px; outline: none; cursor: pointer;
+}
+.bfm-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--bg-surface); cursor: pointer;
+}
+.bfm-range::-moz-range-thumb {
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--bg-surface); cursor: pointer;
+}
+.bfm-range:disabled { cursor: default; }
+.bfm-range:disabled::-webkit-slider-thumb { background: var(--text-muted); cursor: default; }
+
+.bfm-out-tools { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.bfm-ghost-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-muted);
+  font-size: 11px; font-family: var(--font); cursor: pointer; transition: all var(--transition);
+}
+.bfm-ghost-btn:hover { color: var(--text-primary); border-color: var(--border-light); }
+.bfm-ghost-btn.is-on { background: var(--accent-subtle); border-color: var(--accent); color: var(--accent); }
+
+/* 侧栏一体输入框：复用视频生成 composer，收紧以适配窄栏 */
+.bfm-composer {
+  max-width: none;
+  padding: 14px;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 6;
+  overflow: visible;
+}
+.bfm-composer .add-ref-pop {
+  z-index: 70;
+}
+.bfm-composer .composer-input { font-size: 13.5px; line-height: 1.55; }
+.bfm-composer .composer-bar {
+  margin-top: 14px; padding-top: 12px; gap: 8px;
+}
+.bfm-composer .composer-bar-right { gap: 0; flex-wrap: wrap; justify-content: flex-end; }
+.bfm-composer .idea-dock { margin: 0 2px 10px; }
+.bfm-composer .idea-img-chip { width: 44px; height: 44px; }
+.bfm-composer label.composer-icon-btn { cursor: pointer; }
+.bfm-composer--solo {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+}
+.bfm-cfg-summary {
   display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 14px 12px;
 }
-.bfm-batch-card-top { display: flex; align-items: flex-start; gap: 8px; }
-.bfm-batch-no {
-  flex-shrink: 0; font-size: 10px; font-weight: 700;
-  color: var(--text-muted); padding-top: 3px; min-width: 18px;
+.bfm-cfg-prompt {
+  margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-secondary);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; word-break: break-word;
 }
-.bfm-prompt-input {
-  flex: 1; min-width: 0; resize: vertical;
-  padding: 6px 9px; font-size: 12px; line-height: 1.5;
-  background: var(--bg-page); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); color: var(--text-primary);
-  font-family: var(--font); outline: none; transition: border-color var(--transition);
+.bfm-cfg-ref {
+  display: inline-flex; align-items: center; gap: 8px;
+  min-width: 0; color: var(--text-muted); font-size: 11px;
 }
-.bfm-prompt-input:focus { border-color: var(--accent); }
-.bfm-batch-card-actions { flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; }
-.bfm-ref-btn {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 4px 8px; border: 1px solid var(--border-light);
-  border-radius: var(--radius-sm); background: transparent;
-  color: var(--text-secondary); font-size: 11px; font-family: var(--font); cursor: pointer;
-  transition: all var(--transition);
+.bfm-cfg-ref img {
+  width: 28px; height: 28px; border-radius: 6px; object-fit: cover;
+  border: 1px solid var(--border); flex-shrink: 0;
 }
-.bfm-ref-btn:hover { border-color: var(--accent); color: var(--accent); }
-.bfm-gen-btn {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 4px 8px; border: none; border-radius: var(--radius-sm);
-  background: var(--accent-subtle); color: var(--accent-hover);
-  font-size: 11px; font-weight: 600; font-family: var(--font); cursor: pointer;
-  transition: all var(--transition);
+.bfm-cfg-ref em {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: normal;
 }
-.bfm-gen-btn:hover:not(:disabled) { background: var(--accent); color: #fff; }
-.bfm-gen-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.bfm-ref-fallback {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-page); color: var(--text-muted);
+}
 .bfm-rm-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 24px; height: 24px; border: none; border-radius: var(--radius-sm);
   background: transparent; color: var(--text-muted); cursor: pointer; transition: var(--transition);
 }
 .bfm-rm-btn:hover { background: var(--bg-elevated); color: var(--text-primary); }
-.bfm-ref-tag {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 10px; color: var(--accent); padding: 0 2px;
-}
 
-/* 变体缩略图 */
-.bfm-variants { display: flex; gap: 6px; flex-wrap: wrap; }
-.bfm-variant-thumb {
-  position: relative; width: 48px; aspect-ratio: 3/4;
-  border-radius: var(--radius-sm); overflow: hidden;
-  border: 2px solid var(--border-light);
-  background: var(--bg-elevated); cursor: pointer;
-  transition: border-color var(--transition), transform var(--transition);
+/* 第三步已选边框：小格子里也是真实叠放，跟成片长一个样 */
+.bfm-pool-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 8px; padding: 10px 12px;
+  align-content: start; align-items: start;
 }
-.bfm-variant-thumb:hover { transform: scale(1.06); border-color: var(--text-muted); }
-.bfm-variant-thumb.is-on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-subtle); }
-.bfm-variant-bg {
-  position: absolute; inset: 0;
-  background: linear-gradient(
-    145deg,
-    hsl(calc(var(--frame-hue, 220) * 1deg) 28% 18%) 0%,
-    hsl(calc(var(--frame-hue, 220) * 1deg) 18% 12%) 100%
-  );
-}
-.bfm-variant-bg::after {
-  content: ''; position: absolute;
-  inset: 5px 4px; border: 1px solid hsl(calc(var(--frame-hue, 220) * 1deg) 38% 32%);
-  border-radius: 2px;
-}
-.bfm-variant-check {
-  position: absolute; top: 2px; right: 2px; z-index: 2;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 13px; height: 13px; border-radius: 3px;
-  background: var(--accent); color: #fff;
-}
-.bfm-variant-no {
-  position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%); z-index: 2;
-  font-size: 9px; font-weight: 700; color: rgba(255,255,255,0.7);
-}
+.bfm-pool-grid--compact { max-height: 148px; overflow-y: auto; }
+.bfm-pool-item { display: block; min-width: 0; }
 
-/* 添加批次按钮 */
-.bfm-add-batch-btn {
-  display: inline-flex; align-items: center; gap: 5px;
-  width: calc(100% - 24px); margin: 0 12px 10px;
-  padding: 7px 12px; border: 1px dashed var(--border-light);
-  border-radius: var(--radius-md); background: transparent;
-  color: var(--text-muted); font-size: 12px; font-family: var(--font); cursor: pointer;
-  transition: all var(--transition);
+/* 视频池：第二步拉高占满剩余高度，与右栏底齐 */
+.bfm-panel--vid.bfm-panel--grow {
+  overflow: hidden;
 }
-.bfm-add-batch-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-subtle); }
-
-/* 视频池 */
 .bfm-panel--vid .bfm-vid-pool {
+  flex: 1; min-height: 0; overflow-y: auto;
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px; padding: 10px 12px;
+  align-content: start; align-items: start;
 }
 .bfm-vid-card { position: relative; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .bfm-vid-thumb {
@@ -7576,6 +7952,7 @@ body {
   background: var(--bg-elevated); border: 1px solid var(--border);
   display: flex; align-items: center; justify-content: center;
 }
+.bfm-vid-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .bfm-vid-name {
   font-size: 9.5px; color: var(--text-muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -7592,38 +7969,35 @@ body {
   width: 100%; aspect-ratio: 9/16;
   border: 1px dashed var(--border-light); border-radius: var(--radius-md);
   display: flex; align-items: center; justify-content: center;
-  color: var(--text-muted); cursor: pointer; transition: all var(--transition);
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  transition: all var(--transition); font-family: var(--font); padding: 0;
 }
 .bfm-vid-add-slot:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-subtle); }
+.bfm-vid-pool > .add-ref { min-width: 0; width: 100%; display: block; position: relative; }
+.bfm-vid-pool > .add-ref .bfm-vid-add-slot { width: 100%; }
+.bfm-vid-pool > .add-ref .add-ref-pop { left: 0; right: auto; }
 .bfm-pool-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 7px 12px; border-top: 1px solid var(--border); background: var(--bg-page);
+  flex-shrink: 0;
 }
+.bfm-link-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 7px; border: none; border-radius: 6px;
+  background: transparent; color: var(--text-muted);
+  font-size: 11px; font-family: var(--font); cursor: pointer; transition: color var(--transition);
+}
+.bfm-link-btn:hover { color: var(--accent); }
 
-/* 布局选项 */
-.bfm-panel--layout .bfm-layout-opts {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px;
-}
-.bfm-layout-opt {
-  display: flex; flex-direction: column; align-items: center; gap: 7px;
-  padding: 10px 10px 8px; border: 1.5px solid var(--border);
-  border-radius: var(--radius-md); background: var(--bg-card);
-  cursor: pointer; transition: all var(--transition); font-family: var(--font);
-}
-.bfm-layout-opt:hover { border-color: var(--border-light); background: var(--bg-elevated); }
-.bfm-layout-opt.is-on { border-color: var(--accent); background: var(--accent-subtle); }
-.bfm-layout-opt-label { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-.bfm-layout-opt-desc { font-size: 10px; color: var(--text-muted); text-align: center; line-height: 1.4; }
-
-/* 合成量预估 */
+/* 合成量 + 配比下拉同行 */
 .bfm-compose-bar {
   flex-shrink: 0;
   padding: 10px 14px;
   background: var(--bg-page); border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  display: flex; flex-direction: column; gap: 4px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
 }
-.bfm-compose-count { display: flex; align-items: baseline; gap: 5px; flex-wrap: wrap; }
+.bfm-compose-count { display: flex; align-items: baseline; gap: 5px; flex-wrap: wrap; min-width: 0; }
 .bfm-compose-num {
   font-size: 22px; font-weight: 700; color: var(--accent);
   font-variant-numeric: tabular-nums;
@@ -7635,83 +8009,92 @@ body {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; color: var(--danger);
 }
+.bfm-compose-bar .idea-pick { flex-shrink: 0; }
 
-/* 结果行 */
-.bfm-rows { --mix-strip-h: 68px; --mix-cover-w: 50px; }
-.bfm-rows-head {
-  display: flex; align-items: center; gap: 8px;
-  padding: 0 8px 8px; border-bottom: 1px solid var(--border); margin-bottom: 2px;
-  font-size: 11px; color: var(--text-muted);
+/* 成片卡片网格：直接展示套框画面，不再用横条 */
+.bfm-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 14px;
+  padding: 0;
 }
-.bfm-result-row {
-  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
-  border: 1px solid transparent; border-radius: var(--radius-md);
-  background: var(--bg-card); cursor: default;
-  transition: border-color var(--transition), background var(--transition);
+.bfm-result-card {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
+  cursor: pointer; border-radius: var(--radius-md);
+  transition: opacity var(--transition);
 }
-.bfm-result-row:hover { border-color: var(--border-light); background: var(--bg-elevated); }
-.bfm-result-row.is-picked { border-color: var(--accent); background: var(--accent-subtle); }
-.bfm-row-tick { flex-shrink: 0; }
-.bfm-row-idx {
-  flex: 0 0 28px; text-align: center; font-size: 11px;
-  color: var(--text-muted); font-variant-numeric: tabular-nums;
+.bfm-result-card.is-blocked { cursor: not-allowed; opacity: 0.55; }
+.bfm-result-card.is-picked .bfm-canvas {
+  box-shadow: 0 0 0 2px var(--accent);
 }
-.bfm-result-row.is-picked .bfm-row-idx { color: var(--accent-hover); }
-
-/* 合成预览缩略图 */
-.bfm-row-thumb {
-  position: relative; flex: 0 0 var(--mix-cover-w); width: var(--mix-cover-w);
-  height: var(--mix-strip-h); border-radius: var(--radius-sm); overflow: hidden;
-  border: 1px solid var(--border);
+.bfm-result-preview { position: relative; }
+.bfm-result-tick {
+  position: absolute; top: 6px; left: 6px; z-index: 3;
 }
-.bfm-row-thumb-bg {
-  position: absolute; inset: 0;
-  background: linear-gradient(
-    145deg,
-    hsl(calc(var(--frame-hue, 220) * 1deg) 28% 18%) 0%,
-    hsl(calc(var(--frame-hue, 220) * 1deg) 18% 12%) 100%
-  );
+.bfm-result-tick .mix-tick-box { background: rgba(0, 0, 0, 0.55); }
+.bfm-result-no {
+  position: absolute; bottom: 6px; right: 6px; z-index: 3;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 999px; background: rgba(0, 0, 0, 0.55);
+  color: #fff; font-size: 10px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.bfm-row-thumb-bg::after {
-  content: ''; position: absolute;
-  inset: 4px; border: 1px solid hsl(calc(var(--frame-hue, 220) * 1deg) 38% 32%);
-  border-radius: 2px;
+.bfm-result-busy {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  background: rgba(0, 0, 0, 0.4); color: #fff;
+  border-radius: var(--radius-sm);
 }
-.bfm-row-vid-cover {
-  position: absolute; inset: 8px 6px 8px 6px; object-fit: cover;
-  border-radius: 2px; z-index: 1;
+.bfm-result-busy em { font-style: normal; font-size: 11px; }
+.bfm-result-busy--dim { background: rgba(0, 0, 0, 0.48); }
+.bfm-result-hit {
+  display: block; position: relative; width: 100%; padding: 0; border: none;
+  background: none; cursor: pointer; color: inherit; font: inherit; border-radius: var(--radius-sm);
 }
-.bfm-row-vid-icon {
-  position: absolute; inset: 0; width: 100%; height: 100%;
+.bfm-result-hit:disabled { cursor: default; }
+.bfm-result-play {
+  position: absolute; inset: 0; z-index: 2;
   display: flex; align-items: center; justify-content: center;
-  color: rgba(255,255,255,0.35); z-index: 1;
+  background: rgba(0, 0, 0, 0.32); color: #fff; opacity: 0;
+  pointer-events: none; transition: opacity var(--transition);
+  border-radius: var(--radius-sm);
 }
-
-/* 行内元数据 */
-.bfm-row-meta {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+.bfm-result-card:hover .bfm-result-play { opacity: 1; }
+.bfm-out-foot { background: var(--bg-page); }
+.bfm-out-foot-meta {
+  font-size: 12.5px; color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
-.bfm-row-frame-tag {
-  display: inline-flex; align-items: center;
-  padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;
-  color: hsl(calc(var(--frame-hue, 220) * 1deg) 60% 72%);
-  background: hsl(calc(var(--frame-hue, 220) * 1deg) 40% 18%);
-  border: 1px solid hsl(calc(var(--frame-hue, 220) * 1deg) 40% 26%);
+.bfm-result-cap {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  padding: 0 2px;
 }
-.bfm-row-arrow { font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
-.bfm-row-vid-name {
+.bfm-result-frame {
+  font-size: 11px; font-weight: 600; color: var(--text-primary);
+}
+.bfm-result-vid {
   font-size: 11px; color: var(--text-secondary);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.bfm-row-layout-tag {
-  flex-shrink: 0; padding: 1px 5px; border-radius: 4px; font-size: 10px;
-  color: var(--text-muted); background: var(--bg-elevated); border: 1px solid var(--border);
-}
-.bfm-row-status { flex-shrink: 0; min-width: 40px; text-align: right; }
 
-/* 窄屏回退 */
+/* 窄屏回退：纵向堆叠时允许整页滚动，不再锁死等高 */
 @container (max-width: 780px) {
-  .bfm-work { flex-direction: column; height: auto; min-height: 0; max-height: none; }
-  .bfm-side { flex: 0 0 auto; }
+  .clone-page-body:has(.bfm-work) { overflow-y: auto; }
+  .clone-page-inner:has(.bfm-work) { height: auto; flex: none; }
+  .bfm-shell { flex: none; height: auto; }
+  .bfm-work {
+    flex-direction: column; /* 窄屏：配置在上、结果在下 */
+    flex: none;
+    height: auto; min-height: 0; max-height: none;
+  }
+  .bfm-side { flex: 0 0 auto; overflow: visible; }
+  .bfm-side--gen { flex: 0 0 auto; }
+  .bfm-panel--grow { flex: none; min-height: 0; }
+  .bfm-gen-thumbs { max-height: 280px; }
   .bfm-out { min-height: 360px; }
+  .bfm-shot-grid,
+  .bfm-result-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  .bfm-shot-grid--thumbs { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
+  /* 舞台没有可继承的定高了，改用固定高度撑开 */
+  .bfm-stage-wrap { height: 420px; flex: none; }
 }

@@ -62,6 +62,8 @@ function rollupStatus(variants) {
 const HOST_STATUS = { done: 'completed', partial: 'partial', failed: 'failed' };
 function postTaskMeta(task) {
   const failedCount = (task.variants || []).filter(v => v && v.status === 'failed').length;
+  const phase = task.frameMeta && task.frameMeta.phase;
+  const draft = isFrameDraftTask(task);
   window.parent.postMessage({
     type: 'selva-clone-task',
     task: {
@@ -73,6 +75,7 @@ function postTaskMeta(task) {
       createdAt: task.createdAt,
       duration: task.duration || '—',
       toolName: task.toolName || '视频克隆',
+      outputSummary: draft ? '待继续套用' : (phase === 'composing' ? '套框合成中' : undefined),
     },
   }, '*');
 }
@@ -85,9 +88,23 @@ function postTaskMeta(task) {
    裂变来的种子同理：宿主只声明「从哪条任务的第几条裂的、点名变哪几维」，
    基准取值和 N 条脚本按跟真人操作同一条路径现算（读基准 → buildFanoutScripts），
    这样「只变人物、其余逐字沿用」在历史任务里也是真的，不是写死的一句话。 */
+/* 套边框全程都在两步工具页：草稿、逐条套框、下载都不走混剪成片墙。
+   点任务中心回来 = 接着做 / 看成片，而不是 BatchMixTaskDetail。 */
+function isFrameDraftTask(task) {
+  if (!task || task.toolName !== '批量套边框') return false;
+  const phase = task.frameMeta && task.frameMeta.phase;
+  if (phase === 'composing' || phase === 'done') return false;
+  if (phase === 'draft') return true;
+  return !!task.frameDraft && !(task.variants && task.variants.length);
+}
+
+function isFrameToolTask(task) {
+  return !!(task && task.toolName === '批量套边框');
+}
+
 function fillSeedScripts(task, byId = {}, seen = new Set()) {
-  // 批量混剪种子自带封面与片段，不要拿视频生成脚本逻辑去改写
-  if (task.toolName === '批量混剪') return task;
+  // 批量混剪 / 套边框种子自带封面与草稿，不要拿视频生成脚本逻辑去改写
+  if (task.toolName === '批量混剪' || task.toolName === '批量套边框') return task;
   const variants = task.variants || [];
   if (!variants.length || variants.some(v => v && v.promptHtml)) return task;
   const from = task.fanoutFrom;
@@ -144,6 +161,7 @@ export default function EmbedApp() {
   const [flowType, setFlowType] = useState('clone');  // clone=视频克隆 | vgen=视频生成 | fanout=视频裂变 | mix=批量混剪 | frame=批量套边框
   const [taskId, setTaskId] = useState(null);
   const [editSeed, setEditSeed] = useState(null);     // 「重新编辑」注入：{taskId, videoUrl, promptHtml, seq}
+  const [frameResume, setFrameResume] = useState(null); // 套边框草稿：点任务中心回来继续 {taskId, name, draft, rev}
   const [libraryTag, setLibraryTag] = useState('全部');
   const [librarySource, setLibrarySource] = useState('TikTok');
   const libraryUseRef = useRef(null);                  // 从视频生成进入库时，保留当前输入卡的模板回填函数
@@ -152,7 +170,7 @@ export default function EmbedApp() {
   useEffect(() => () => genTimers.current.forEach(clearTimeout), []);
 
   const bump = () => setTick(t => t + 1);
-  const resetFlow = () => { setEditSeed(null); setCloneKey(k => k + 1); };   // 重挂载＝全新流程
+  const resetFlow = () => { setEditSeed(null); setFrameResume(null); setCloneKey(k => k + 1); };   // 重挂载＝全新流程
 
   const closeClone = (keepSession) => {
     setCloneOpen(false);
@@ -172,14 +190,61 @@ export default function EmbedApp() {
       };
       taskStore.unshift(task);
     }
-    const tName = p.toolName || '视频克隆';
+    const tName = p.toolName || task.toolName || '视频克隆';
+    const fallbackName = (
+      tName === '视频生成' ? `视频生成-${p.region || task.region || ''}`
+        : tName === '视频裂变' ? '视频裂变'
+          : tName === '批量混剪' ? '批量混剪'
+            : tName === '批量套边框' ? '批量套边框'
+              : `视频克隆-${p.region || task.region || ''}`
+    );
+
+    /* 套边框点「生成图片」就建任务：只存向导草稿，不跑成片计时。
+       同一条任务后续抠像/换步/加视频都走这次更新。 */
+    if (p.framePhase === 'draft') {
+      Object.assign(task, {
+        name: p.name || task.name || fallbackName,
+        sourceText: p.sourceText != null ? p.sourceText : task.sourceText,
+        images: p.images !== undefined ? p.images : task.images,
+        frameDraft: p.frameDraft || task.frameDraft,
+        frameMeta: { ...(task.frameMeta || {}), ...(p.frameMeta || {}), phase: 'draft' },
+        toolName: '批量套边框',
+        status: 'generating',
+        duration: '—',
+        region: p.region || task.region || '—',
+      });
+      postTaskMeta(task);
+      bump();
+      return task.id;
+    }
+
+    /* 套框合成在工具页右侧逐条跑，这里只同步任务中心状态，不跳成片墙、不另开计时。 */
+    if (p.framePhase === 'composing' || p.framePhase === 'done') {
+      const variants = p.variants || task.variants || [];
+      Object.assign(task, {
+        name: p.name || task.name || fallbackName,
+        videoUrl: p.videoUrl || task.videoUrl,
+        variants,
+        sourceText: p.sourceText != null ? p.sourceText : task.sourceText,
+        images: p.images !== undefined ? p.images : task.images,
+        promptText: p.promptText != null ? p.promptText : task.promptText,
+        frameDraft: p.frameDraft !== undefined ? p.frameDraft : task.frameDraft,
+        frameMeta: { ...(task.frameMeta || {}), ...(p.frameMeta || {}), phase: p.framePhase },
+        toolName: '批量套边框',
+        status: p.framePhase === 'done' ? 'done' : 'generating',
+        duration: p.framePhase === 'done'
+          ? `${Math.max(1, Math.round(variants.length * 1.3))} 分 ${pad(variants.length * 7 % 60)} 秒`
+          : '—',
+        cloneUrl: p.framePhase === 'done' ? (p.videoUrl || task.videoUrl) : task.cloneUrl,
+        region: p.region || task.region || '—',
+      });
+      postTaskMeta(task);
+      bump();
+      return task.id;
+    }
+
     Object.assign(task, {
-      name: p.name || (
-        tName === '视频生成' ? `视频生成-${p.region}`
-          : tName === '视频裂变' ? '视频裂变'
-            : tName === '批量混剪' ? '批量混剪'
-              : `视频克隆-${p.region}`
-      ),
+      name: p.name || task.name || fallbackName,
       videoUrl: p.videoUrl,
       promptHtml: p.promptHtml,
       promptText: p.promptText,
@@ -189,6 +254,8 @@ export default function EmbedApp() {
       refVideos: p.refVideos || null,     // 参考视频 / 音频：只有部分模型收，详情页按名字列
       refAudios: p.refAudios || null,
       mixMeta: p.mixMeta || null,         // 批量混剪：配乐 / 保留原声
+      frameMeta: p.frameMeta || task.frameMeta || null,     // 批量套边框：尺寸 / 张数 / 配比
+      frameDraft: p.frameDraft !== undefined ? p.frameDraft : task.frameDraft,
       // 第一步的出参设置：「重新编辑」回去时要原样带回，不能让用户重设一遍
       model: p.model || null,
       fanoutFrom: p.fanoutFrom || null,   // 裂变来路：基准任务/基准条/变了哪几维/用户那句指令
@@ -204,13 +271,14 @@ export default function EmbedApp() {
     });
     postTaskMeta(task);
 
-    // 批量混剪：本地拼接，逐条「待合成 → 合成中 → 合成成功」，没有模型失败
+    // 批量混剪：本地合成后在任务中心逐条跑封面墙。套边框合成留在工具页右侧。
     if (tName === '批量混剪' && Array.isArray(task.variants)) {
       task.variants = task.variants.map(v => ({ ...v, status: 'pending' }));
       task.status = 'generating';
       postTaskMeta(task);
       bump();
       const STEP = 1300;
+      const RUN = 1100;
       task.variants.forEach((_, i) => {
         genTimers.current.push(setTimeout(() => {
           task.variants = task.variants.map((v, j) => (
@@ -230,9 +298,9 @@ export default function EmbedApp() {
             postTaskMeta(task);
           }
           bump();
-        }, 400 + i * STEP + 1100));
+        }, 400 + i * STEP + RUN));
       });
-      return;
+      return task.id;
     }
 
     genTimers.current.push(setTimeout(() => {
@@ -252,6 +320,7 @@ export default function EmbedApp() {
       postTaskMeta(task);
       bump();
     }, 5000));
+    return task.id;
   };
 
   // 重新生成＝以原任务的素材与提示词在任务中心提交一条【新任务】；
@@ -259,8 +328,9 @@ export default function EmbedApp() {
   // idx = 序号 | 序号数组（失败重试一次带走好几条）| 不传（整批重来）
   const regenerate = (task, idx) => {
     if (!task) return;
+
     const isFanout = task.toolName === '视频裂变';
-    const isMix = task.toolName === '批量混剪';
+    const isMix = task.toolName === '批量混剪' || task.toolName === '批量套边框';
     const wanted = Array.isArray(idx) ? idx : (typeof idx === 'number' ? [idx] : null);
     // 挑出要重来的那几条，并把上一轮的失败痕迹抹掉——新任务从干净状态开始跑
     const picked = (wanted && task.variants)
@@ -281,11 +351,14 @@ export default function EmbedApp() {
       sourceText: task.sourceText,
       images: task.images, refVideos: task.refVideos, refAudios: task.refAudios,
       mixMeta: task.mixMeta,
+      frameMeta: task.frameMeta,
       model: task.model, aspect: task.aspect, outDuration: task.outDuration, magic: task.magic,
       name: picked
-        ? (picked.length > 1
-          ? (isMix ? `批量混剪 · ${picked.length} 条` : isFanout ? `视频裂变 · ${picked.length} 条` : `视频生成 · ${picked.length} 条`)
-          : (isMix ? '批量混剪' : isFanout ? '视频裂变' : '视频生成'))
+        ? (isMix
+          ? `${String(task.name || task.toolName || '批量混剪').replace(/ · 重试( \d+ 条)?$/, '')} · 重试${picked.length > 1 ? ` ${picked.length} 条` : ''}`
+          : (picked.length > 1
+            ? (isFanout ? `视频裂变 · ${picked.length} 条` : `视频生成 · ${picked.length} 条`)
+            : (isFanout ? '视频裂变' : '视频生成')))
         : task.name,
       region: task.region, regions: task.regions, toolName: task.toolName, fanoutFrom: task.fanoutFrom,
     });
@@ -443,7 +516,12 @@ export default function EmbedApp() {
       if (t === 'selva-vgen-open') { setFlowType('vgen'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-vfanout-open') { setFlowType('fanout'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-vmix-open') { setFlowType('mix'); setView('flow'); setCloneOpen(true); }
-      if (t === 'selva-vframe-open') { setFlowType('frame'); setView('flow'); setCloneOpen(true); }
+      if (t === 'selva-vframe-open') {
+        setFrameResume(null);
+        setFlowType('frame');
+        setView('flow');
+        setCloneOpen(true);
+      }
       if (t === 'selva-hot-library-open') {
         setLibraryTag(e.data.initialTag || '全部');
         setLibrarySource(e.data.initialSource === 'Kwai' ? 'Kwai' : 'TikTok');
@@ -463,9 +541,23 @@ export default function EmbedApp() {
             task.toolName === '视频生成' ? 'vgen'
               : task.toolName === '视频裂变' ? 'fanout'
                 : task.toolName === '批量混剪' ? 'mix'
-                  : 'clone',
+                  : task.toolName === '批量套边框' ? 'frame'
+                    : 'clone',
           );
         }
+        /* 套边框：任务详情就是原来的两步工具（含右侧逐条套框 / 下载），不进混剪成片墙 */
+        if (isFrameToolTask(task)) {
+          setFrameResume({
+            taskId: task.id,
+            name: task.name,
+            draft: task.frameDraft || {},
+            rev: Date.now(),
+          });
+          setView('flow');
+          setCloneOpen(true);
+          return;
+        }
+        setFrameResume(null);
         setView('task');
         setCloneOpen(true);
       }
@@ -541,12 +633,15 @@ export default function EmbedApp() {
           />
         ) : flowType === 'frame' ? (
           <BatchFrameModal
-            key={cloneKey}
+            key={`frame:${frameResume ? frameResume.taskId : 'new'}:${frameResume ? frameResume.rev : cloneKey}`}
             visible={cloneOpen && view === 'flow'}
             embedded
             onClose={closeClone}
-            onRestart={resetFlow}
+            onRestart={() => { setFrameResume(null); resetFlow(); }}
             onSubmitTask={submitTask}
+            initialTaskId={frameResume ? frameResume.taskId : null}
+            initialName={frameResume ? frameResume.name : null}
+            initialDraft={frameResume ? frameResume.draft : null}
           />
         ) : (
           <CloneModal

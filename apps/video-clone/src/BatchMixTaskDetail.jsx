@@ -12,16 +12,16 @@ function download(url, name) {
   a.click();
 }
 
-const STATUS = {
+const MIX_STATUS = {
   pending: { key: 'pending', label: '待合成' },
   generating: { key: 'generating', label: '合成中' },
   done: { key: 'done', label: '合成成功' },
 };
 
 function clipStatus(v) {
-  if (!v || !v.status || v.status === 'pending') return STATUS.pending;
-  if (v.status === 'generating') return STATUS.generating;
-  return STATUS.done;
+  if (!v || !v.status || v.status === 'pending') return MIX_STATUS.pending;
+  if (v.status === 'generating') return MIX_STATUS.generating;
+  return MIX_STATUS.done;
 }
 
 function coverOf(v) {
@@ -65,10 +65,11 @@ function PlayModal({ title, src, onClose }) {
 
 /* ── 批量混剪任务详情 ──
    封面卡片墙；默认全选；仅点左上角勾选框改选中；点封面弹窗播放。
-   底栏文案对齐参考：状态 | 1080*1920，无时长、无待审核。 */
+   套边框成片不走这里，留在批量套边框第二步右侧。 */
 export function BatchMixTaskDetail({ task, onBack }) {
   const clips = (task && task.variants && task.variants.length) ? task.variants : [];
   const meta = task.mixMeta || {};
+  const unit = '组合';
   const [picked, setPicked] = useState(() => new Set());
   const [preview, setPreview] = useState(null); // { title, src }
 
@@ -106,7 +107,7 @@ export function BatchMixTaskDetail({ task, onBack }) {
   const downloadBatch = () => {
     selectedDone.forEach((v) => {
       const i = clips.indexOf(v);
-      download(urlOf(v, task), `${task.name}-组合${i + 1}`);
+      download(urlOf(v, task), `${task.name}-${unit}${i + 1}`);
     });
   };
 
@@ -115,7 +116,7 @@ export function BatchMixTaskDetail({ task, onBack }) {
     if (st.key !== 'done') return;
     const src = urlOf(v, task);
     if (!src) return;
-    setPreview({ title: `组合 ${i + 1}`, src });
+    setPreview({ title: `${unit} ${i + 1}`, src });
   };
 
   return (
@@ -179,7 +180,7 @@ export function BatchMixTaskDetail({ task, onBack }) {
                         className="bmd-card-hit"
                         onClick={() => openPlay(v, i)}
                         disabled={!playable}
-                        title={playable ? `播放组合 ${i + 1}` : st.label}
+                        title={playable ? `播放${unit} ${i + 1}` : st.label}
                       >
                         {cover
                           ? <img src={cover} alt="" />
@@ -212,7 +213,7 @@ export function BatchMixTaskDetail({ task, onBack }) {
                         className={`bmd-card-tick ${on ? 'is-on' : ''}`}
                         onClick={e => toggle(key, e)}
                         aria-pressed={on}
-                        aria-label={on ? `取消勾选组合 ${i + 1}` : `勾选组合 ${i + 1}`}
+                        aria-label={on ? `取消勾选${unit} ${i + 1}` : `勾选${unit} ${i + 1}`}
                         title={on ? '取消勾选' : '勾选'}
                       >
                         {on && <Check size={11} strokeWidth={3} />}
@@ -220,7 +221,7 @@ export function BatchMixTaskDetail({ task, onBack }) {
                     </div>
 
                     <div className="bmd-card-foot">
-                      <div className="bmd-card-title">组合 {i + 1}</div>
+                      <div className="bmd-card-title">{unit} {i + 1}</div>
                       <div className={`bmd-card-status is-${st.key}`}>
                         {st.key === 'generating'
                           ? <Loader2 size={12} className="spinner" />
