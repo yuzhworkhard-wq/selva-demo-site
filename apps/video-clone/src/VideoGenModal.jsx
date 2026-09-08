@@ -11,6 +11,7 @@ import {
   VIDEO_MODEL_CONFIG, MODEL_FAMILIES, DEFAULT_MODEL, modelCfg, modelLabel, familyOf,
   REF_KINDS, kindLabel, kindOfFile,
 } from './videoModelConfig.mjs';
+import { needsOrchestration } from './longVideoPlan.mjs';
 import {
   INDUSTRIES, SOURCES, VIDEO_TYPES, DURATION_BANDS, SIZES, CREATED_BANDS, CREATED_SEGMENT_LABELS,
   CAL_WEEKDAYS, formatSpend, deriveTodaySpend, formatUploadDate,
@@ -707,6 +708,12 @@ export function VideoGenModal({
   const setRefs = { image: setAttachedImages, video: setAttachedVideos, audio: setAttachedAudios };
   const refCount = attachedImages.length + attachedVideos.length + attachedAudios.length;
   const issues = genIssues(videoModel, refs, promptText);
+  const longMode = needsOrchestration(modelCfg(videoModel), duration);
+
+  // 长视频固定 1 条
+  useEffect(() => {
+    if (longMode) setCount(1);
+  }, [longMode]);
 
   const hasProgress = submitting || refCount > 0 || promptText.trim().length > 0;
   const exit = () => onClose(hasProgress);
@@ -789,12 +796,20 @@ export function VideoGenModal({
     }
   };
 
-  /* 生成：脚本在这里一次性配好直接进任务中心，不再让用户过一道预览。
-     裂变规则（Magic Prompt 三档怎么影响 N 条的差异性）全在 buildVariantScripts 里，
-     这里只负责把输入递过去——原先这段把同一套规则又抄了一遍，加「维度取值也要存」
-     的时候就得改两处，正是那句注释预言的分叉。 */
+  /* 短视频：脚本配好直接进任务中心。
+     长视频：点发送即建任务（扩写已计费），进任务中心分步确认编排，不在弹窗里卡两步。 */
   const handleGenerate = () => {
     if (issues.length) return;   // 按钮此时是灰的，这里兜底防回车直发
+    if (needsOrchestration(modelCfg(videoModel), duration)) {
+      submitTask([], 1, {
+        longVideo: true,
+        longPhase: 'expanding',
+        name: '长视频生成',
+        magic: 'on',
+        openTask: true,
+      });
+      return;
+    }
     const list = buildVariantScripts(promptText, attachedImages.map(a => a.url), magic, count);
     submitTask(list, count);
   };
@@ -802,28 +817,36 @@ export function VideoGenModal({
   // 短暂过渡后上报任务（生成中）。提交完【留在原地】——画面不变，只在顶部给一条轻提示，
   // 用户想接着改一版直接改了再发，不用重新进一次工具。
   // 裂变是一对多：每条变体各带自己的脚本，详情页要能逐条看，不能拼成一坨字符串。
-  const submitTask = (list, n) => {
+  const submitTask = (list, n, extra = {}) => {
     if (submitting) return;
     setSubmitting(true);
     // 图归任务所有了，本组件卸载时别再回收。要累计不能覆盖——提交后弹窗不关，
     // 用户可能删掉某张再发一次，那张图仍归上一条任务持有
+    const imgUrls = extra.images || attachedImages.map(a => a.url);
     handedRef.current = [...new Set([
       ...handedRef.current,
-      ...attachedImages.map(a => a.url), ...attachedVideos.map(a => a.url), ...attachedAudios.map(a => a.url),
+      ...imgUrls,
+      ...attachedVideos.map(a => a.url), ...attachedAudios.map(a => a.url),
     ])];
     setTimeout(() => {
       if (onSubmitTask) onSubmitTask({
         taskId: initialTaskId,
-        name: n > 1 ? `视频生成 · ${n} 条` : '视频生成',
+        name: extra.name || (n > 1 ? `视频生成 · ${n} 条` : '视频生成'),
         videoUrl: initialVideoUrl || 'test-clip.mp4',
-        variants: list,                       // [{ promptHtml }]
-        promptHtml: list[0].promptHtml,       // 兼容只取一条的旧调用
-        promptText: list.map(v => v.promptHtml.replace(/<[^>]+>/g, '')).join('\n---\n'),
+        variants: list.length ? list : null,
+        promptHtml: list[0]?.promptHtml || '',
+        promptText: list.length
+          ? list.map(v => (v.promptFull || v.promptHtml?.replace(/<[^>]+>/g, '') || '')).join('\n---\n')
+          : promptText,
         sourceText: promptText,               // 原始输入，详情页里可展开对照
-        images: attachedImages.map(a => a.url),   // 参考图历来是纯 url 数组，详情页按这个渲染
+        images: imgUrls,
         refVideos: attachedVideos, refAudios: attachedAudios,   // 参考视频/音频：{url,name}，详情页只报名字
-        model: videoModel, aspect, outDuration: duration, magic,   // 设置，「重新编辑」回第一步时要带回
+        model: videoModel, aspect, outDuration: duration, magic: extra.magic || magic,
         region: 'pt-BR', toolName: '视频生成', status: 'generating',
+        longVideo: !!extra.longVideo,
+        longPhase: extra.longPhase || null,
+        longPlan: extra.longPlan || null,
+        openTask: !!extra.openTask,
       });
       setSubmitting(false);
       // 输入已经交出去了，框子清空好接着写下一条；参数（模型/画幅/时长/条数/Magic）留着不动
@@ -832,7 +855,9 @@ export function VideoGenModal({
       setAttachedImages([]);
       setAttachedVideos([]);
       setAttachedAudios([]);
-      showToast(n > 1 ? `${n} 条视频已提交至任务中心` : '视频已提交至任务中心');
+      showToast(extra.longVideo
+        ? '长视频任务已创建，脚本扩写进行中'
+        : (n > 1 ? `${n} 条视频已提交至任务中心` : '视频已提交至任务中心'));
     }, 1200);
   };
 
@@ -860,6 +885,7 @@ export function VideoGenModal({
               aspect={aspect} setAspect={setAspect} duration={duration} setDuration={setDuration}
               magic={magic} setMagic={setMagic}
               count={count} setCount={setCount} onNext={handleGenerate} submitting={submitting}
+              longMode={longMode}
             />
           </div>
         </div>
@@ -1229,6 +1255,7 @@ function Step1InputIdea({
   onApplyTemplate, onOpenLibrary,
   videoModel, setVideoModel, submitting, magic, setMagic,
   aspect, setAspect, duration, setDuration, count, setCount, onNext,
+  longMode = false,
 }) {
   const cfg = modelCfg(videoModel);
   const refCount = REF_KINDS.reduce((n, k) => n + refs[k.key].length, 0);
@@ -1246,7 +1273,11 @@ function Step1InputIdea({
     <div className="step-content idea-step1">
       <div className="idea-hero-head">
         <h1 className="idea-title">一句话，<span className="accent-text">裂变多条广告视频</span></h1>
-        <p className="idea-sub">用你选的视频模型，把一个创意自动裂变成多条不同脚本的成片</p>
+        <p className="idea-sub">
+          {longMode
+            ? '已选长时长：发送后进入任务中心，分步确认编排再出片'
+            : '用你选的视频模型，把一个创意自动裂变成多条不同脚本的成片'}
+        </p>
       </div>
 
       <div className="composer">
@@ -1305,6 +1336,12 @@ function Step1InputIdea({
             <span>{issues.join('；')}</span>
           </div>
         )}
+        {longMode && issues.length === 0 && (
+          <div className="composer-warn">
+            <AlertCircle size={13} strokeWidth={2} />
+            <span>时长超过 {cfg.directMax || '单次直出上限'}：发送即创建任务并开始脚本扩写（费用计入任务），在任务详情里确认编排</span>
+          </div>
+        )}
 
         {/* 唯一一条底栏：左＝加料，右＝参数 + 发送 */}
         <div className="composer-bar">
@@ -1313,7 +1350,7 @@ function Step1InputIdea({
               model={videoModel} refs={refs}
               onAddFiles={onAddLocalFiles} onOpenLibrary={() => setAssetLibOpen(true)}
             />
-            <MagicSwitch value={magic} onChange={setMagic} />
+            {!longMode && <MagicSwitch value={magic} onChange={setMagic} />}
           </div>
           <div className="composer-bar-right">
             <ModelPicker value={videoModel} onChange={setVideoModel} />
@@ -1328,11 +1365,11 @@ function Step1InputIdea({
                   </span>
                 </span>
               )}
-            <Stepper value={count} onChange={setCount} title="生成条数" />
+            {!longMode && <Stepper value={count} onChange={setCount} title="生成条数" />}
             <button
               type="button" className="composer-send"
               disabled={blocked} onClick={onNext}
-              title={issues.length ? issues[0] : (count === 1 ? '生成视频' : `生成 ${count} 条视频`)}
+              title={issues.length ? issues[0] : (longMode ? '创建长视频任务' : count === 1 ? '生成视频' : `生成 ${count} 条视频`)}
             >
               {submitting ? <Loader2 size={16} className="spinner" /> : <ArrowUp size={17} strokeWidth={2.2} />}
             </button>

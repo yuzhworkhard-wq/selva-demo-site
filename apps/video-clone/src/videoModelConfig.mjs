@@ -1,8 +1,10 @@
-/* 视频模型能力的单一来源：界面保存稳定的内部标识，所有可见名称通过 label 渲染。 */
+/* 视频模型能力的单一来源：界面保存稳定的内部标识，所有可见名称通过 label 渲染。
+   directMax：单次可直出上限；超过则走长视频编排（omni / Grok 无 long 档）。 */
 export const VIDEO_MODEL_CONFIG = {
   'Seedance 2.0': {
     label: 'Seedance 2.0',
-    durations: ['15s', '10s', '5s'],
+    durations: ['15s', '10s', '5s', '60s'],
+    directMax: '15s',
     maxChars: 5000,
     limits: { image: 4, video: 3, audio: 1 },
     credits: 2,
@@ -10,7 +12,8 @@ export const VIDEO_MODEL_CONFIG = {
   },
   'Seedance 2.0 Fast': {
     label: 'Seedance 2.0 Fast',
-    durations: ['15s', '10s', '5s'],
+    durations: ['15s', '10s', '5s', '60s'],
+    directMax: '15s',
     maxChars: 5000,
     limits: { image: 4, video: 3, audio: 1 },
     credits: 2,
@@ -18,7 +21,8 @@ export const VIDEO_MODEL_CONFIG = {
   },
   'Minimax H3': {
     label: 'Minimax H3',
-    durations: ['15s', '10s'],
+    durations: ['15s', '10s', '60s'],
+    directMax: '15s',
     maxChars: 2000,
     limits: { image: 5, video: 0, audio: 1 },
     credits: 1,
@@ -27,6 +31,7 @@ export const VIDEO_MODEL_CONFIG = {
   'Grok 1.5': {
     label: 'Grok imagine 1.5',
     durations: ['15s', '10s'],
+    directMax: '15s',
     maxChars: 4000,
     limits: { image: 7, video: 0, audio: 0 },
     credits: 1,
@@ -35,6 +40,7 @@ export const VIDEO_MODEL_CONFIG = {
   'Google omni': {
     label: 'omni',
     durations: ['10s'],
+    directMax: '10s',
     maxChars: 4000,
     limits: { image: 4, video: 1, audio: 0 },
     credits: 1,

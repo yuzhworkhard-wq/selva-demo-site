@@ -6,8 +6,10 @@ import { BatchMixModal } from './BatchMixModal';
 import { BatchFrameModal } from './BatchFrameModal';
 import { CloneTaskDetail } from './CloneTaskDetail';
 import { VideoGenTaskDetail } from './VideoGenTaskDetail';
+import { LongVideoTaskDetail } from './LongVideoTaskDetail';
 import { BatchMixTaskDetail } from './BatchMixTaskDetail';
 import { buildFanoutScripts, buildVariantScripts, readVideoDims, FANOUT_DIMS } from './briefParser';
+import { buildLongVideoPlan } from './longVideoPlan.mjs';
 import { normalizeRegions } from './videoRegionConfig.mjs';
 import { SOURCES } from './viralLibrary.mjs';
 import './styles.css';
@@ -262,6 +264,9 @@ export default function EmbedApp() {
       aspect: p.aspect || null,
       outDuration: p.outDuration || null,   // 出片时长(5s/10s)，与下面的任务耗时同名会被覆盖，必须分开
       magic: p.magic || null,             // Magic Prompt 档位，也是废片归因时的一条线索
+      longVideo: p.longVideo != null ? !!p.longVideo : !!task.longVideo,
+      longPhase: p.longPhase || task.longPhase || null,
+      longPlan: p.longPlan !== undefined ? p.longPlan : task.longPlan,
       region: p.region,
       regions: p.regions || null,
       status: 'generating',
@@ -303,6 +308,75 @@ export default function EmbedApp() {
       return task.id;
     }
 
+    // 长视频：先扩写进任务（计费），用户在详情确认后再并行出分镜
+    if (tName === '视频生成' && task.longVideo) {
+      const phase = task.longPhase || p.longPhase || 'expanding';
+      if (phase === 'expanding' || (!task.longPlan && phase !== 'producing')) {
+        task.longPhase = 'expanding';
+        task.variants = null;
+        task.status = 'generating';
+        postTaskMeta(task);
+        bump();
+        if (p.openTask) {
+          setTaskId(task.id);
+          setView('task');
+          setFlowType('vgen');
+          setCloneOpen(true);
+        }
+        genTimers.current.push(setTimeout(() => {
+          const plan = buildLongVideoPlan({
+            sourceText: task.sourceText || '',
+            aspect: task.aspect || '9:16',
+            duration: task.outDuration || '60s',
+            imageUrls: task.images || [],
+          });
+          task.longPlan = plan;
+          task.longPhase = 'review';
+          task.images = plan.entities.map(e => e.imageUrl).filter(Boolean);
+          task.promptText = [plan.advancedGlobal, ...plan.shots.map(s => s.promptFull)].join('\n\n');
+          postTaskMeta(task);
+          bump();
+        }, 1400));
+        return task.id;
+      }
+      if (phase === 'producing' && Array.isArray(task.variants)) {
+        task.variants = task.variants.map(v => ({ ...v, status: 'pending' }));
+        task.longPhase = 'producing';
+        task.status = 'generating';
+        postTaskMeta(task);
+        bump();
+        const STEP = 500;
+        const RUN = 1600;
+        task.variants.forEach((_, i) => {
+          genTimers.current.push(setTimeout(() => {
+            task.variants = task.variants.map((v, j) => (
+              j === i ? { ...v, status: 'generating' } : v
+            ));
+            bump();
+          }, 200 + i * STEP));
+          genTimers.current.push(setTimeout(() => {
+            const fail = decideClipFail(i, task.variants.length, task.sourceText);
+            task.variants = task.variants.map((v, j) => (
+              j === i
+                ? (fail ? { ...v, status: 'failed', fail } : { ...v, status: 'done' })
+                : v
+            ));
+            const pending = task.variants.some(v => !v.status || v.status === 'pending' || v.status === 'generating');
+            if (!pending) {
+              task.status = rollupStatus(task.variants);
+              task.longPhase = 'done';
+              task.cloneUrl = task.videoUrl;
+              task.duration = task.outDuration || '60s';
+              postTaskMeta(task);
+            }
+            bump();
+          }, 200 + i * STEP + RUN));
+        });
+        return task.id;
+      }
+      return task.id;
+    }
+
     genTimers.current.push(setTimeout(() => {
       // 逐条落状态：视频生成 / 裂变会模拟模型失败；克隆一对一
       if ((tName === '视频生成' || tName === '视频裂变') && Array.isArray(task.variants)) {
@@ -323,11 +397,83 @@ export default function EmbedApp() {
     return task.id;
   };
 
+  // 长视频：详情内改编排 / 确认开渲 / 单镜重跑
+  const patchLongPlan = (task, plan) => {
+    if (!task || !plan) return;
+    task.longPlan = plan;
+    task.images = (plan.entities || []).map(e => e.imageUrl).filter(Boolean);
+    postTaskMeta(task);
+    bump();
+  };
+
+  const confirmLongProduce = (task) => {
+    if (!task?.longPlan) return;
+    const shots = task.longPlan.shots || [];
+    const variants = shots.map((s) => ({
+      promptHtml: s.promptHtml,
+      dims: [],
+      shotId: s.id,
+      shotIndex: s.index,
+      timeRange: s.timeRange,
+      narrative: s.narrative,
+      dialogue: s.dialogue,
+      visualSummary: s.visualSummary,
+      promptFull: s.promptFull,
+      status: 'pending',
+    }));
+    submitTask({
+      taskId: task.id,
+      name: task.name || '长视频生成',
+      videoUrl: task.videoUrl || 'test-clip.mp4',
+      variants,
+      promptHtml: variants[0]?.promptHtml || '',
+      promptText: shots.map(s => s.promptFull).join('\n---\n'),
+      sourceText: task.sourceText,
+      images: (task.longPlan.entities || []).map(e => e.imageUrl).filter(Boolean),
+      refVideos: task.refVideos,
+      refAudios: task.refAudios,
+      model: task.model,
+      aspect: task.aspect,
+      outDuration: task.outDuration,
+      magic: task.magic || 'on',
+      region: task.region,
+      toolName: '视频生成',
+      longVideo: true,
+      longPhase: 'producing',
+      longPlan: task.longPlan,
+    });
+  };
+
   // 重新生成＝以原任务的素材与提示词在任务中心提交一条【新任务】；
   // 原任务与详情界面完全不动，唯一反馈是详情里的顶部轻提示
   // idx = 序号 | 序号数组（失败重试一次带走好几条）| 不传（整批重来）
   const regenerate = (task, idx) => {
     if (!task) return;
+
+    // 长视频单镜重跑：原任务内替换该分镜，其余保留
+    if (task.longVideo && typeof idx === 'number' && Array.isArray(task.variants) && task.variants[idx]) {
+      const { status, fail, ...rest } = task.variants[idx];
+      task.variants = task.variants.map((v, i) => (
+        i === idx ? { ...rest, status: 'generating' } : v
+      ));
+      task.status = 'generating';
+      postTaskMeta(task);
+      bump();
+      genTimers.current.push(setTimeout(() => {
+        task.variants = task.variants.map((v, i) => (
+          i === idx ? { ...v, status: 'done', fail: undefined } : v
+        ));
+        const pending = task.variants.some(v => v.status === 'pending' || v.status === 'generating');
+        if (!pending) {
+          task.status = rollupStatus(task.variants);
+          task.cloneUrl = task.videoUrl;
+          task.duration = task.outDuration || task.duration || '60s';
+        }
+        postTaskMeta(task);
+        bump();
+      }, 1800));
+      return;
+    }
 
     const isFanout = task.toolName === '视频裂变';
     const isMix = task.toolName === '批量混剪' || task.toolName === '批量套边框';
@@ -353,6 +499,7 @@ export default function EmbedApp() {
       mixMeta: task.mixMeta,
       frameMeta: task.frameMeta,
       model: task.model, aspect: task.aspect, outDuration: task.outDuration, magic: task.magic,
+      longVideo: task.longVideo, longPlan: task.longPlan,
       name: picked
         ? (isMix
           ? `${String(task.name || task.toolName || '批量混剪').replace(/ · 重试( \d+ 条)?$/, '')} · 重试${picked.length > 1 ? ` ${picked.length} 条` : ''}`
@@ -670,7 +817,15 @@ export default function EmbedApp() {
         />
       )}
       {view === 'task' && cloneOpen && curTask && (
-        (curTask.toolName === '视频生成' || curTask.toolName === '视频裂变') ? (
+        curTask.longVideo ? (
+          <LongVideoTaskDetail
+            task={curTask}
+            onBack={() => closeClone(true)}
+            onPatchPlan={(plan) => patchLongPlan(curTask, plan)}
+            onConfirmProduce={() => confirmLongProduce(curTask)}
+            onRegenerateShot={(i) => regenerate(curTask, i)}
+          />
+        ) : (curTask.toolName === '视频生成' || curTask.toolName === '视频裂变') ? (
           <VideoGenTaskDetail
             task={curTask}
             baseTask={baseTask}
