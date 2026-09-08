@@ -18,7 +18,7 @@ import { buildMixes, countMixes, durationBands, fmtTime, minMaterials, parseCloc
    素材池可多传；每次点生成，从池里勾选的素材里最多用 MAX_ACTIVE 条做排列。 */
 
 const MAX_ACTIVE = 6;   // 单次合成勾选上限（不是素材池上限）
-const MAX_EXPORT = 20;  // 一次导出到任务中心上限，避免压垮服务端
+const MAX_EXPORT = 50;  // 一次导出到任务中心上限，避免压垮服务端
 
 const TRANSITIONS = [
   { value: 'fade', label: '淡入淡出', desc: '前段渐隐、后段渐显' },
