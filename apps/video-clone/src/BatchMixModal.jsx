@@ -373,7 +373,9 @@ function ClipLibraryDialog({ chosenIds, onConfirm, onClose }) {
 }
 
 /* 更多设置：把不常改但要能改的三项收进来（对齐筷子底栏的「其他配置」） */
-function MoreSettings({ leadLock, onLeadLock, bgm, onBgmFile, onBgmClear, keepVoice, onKeepVoice }) {
+function MoreSettings({
+  leadLock, onLeadLock, tailLock, onTailLock, bgm, onBgmFile, onBgmClear, keepVoice, onKeepVoice,
+}) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
   const fileRef = useRef(null);
@@ -385,7 +387,7 @@ function MoreSettings({ leadLock, onLeadLock, bgm, onBgmFile, onBgmClear, keepVo
     document.addEventListener('keydown', esc, true);
     return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc, true); };
   }, [open]);
-  const dirty = leadLock || !!bgm;
+  const dirty = leadLock || tailLock || !!bgm;
   return (
     <div className="mix-more" ref={wrapRef}>
       <input
@@ -408,6 +410,18 @@ function MoreSettings({ leadLock, onLeadLock, bgm, onBgmFile, onBgmClear, keepVo
             <button
               type="button" className={`fo-preset-control ${leadLock ? 'is-on' : ''}`} role="switch" aria-checked={leadLock}
               onClick={() => onLeadLock(!leadLock)}
+            >
+              <span className="fo-preset-switch" aria-hidden="true"><i /></span>
+            </button>
+          </div>
+          <div className="mix-more-row">
+            <span className="mix-more-text">
+              <b>片尾锁定</b>
+              <em>最后一段固定不变，只让前面的段落变化</em>
+            </span>
+            <button
+              type="button" className={`fo-preset-control ${tailLock ? 'is-on' : ''}`} role="switch" aria-checked={tailLock}
+              onClick={() => onTailLock(!tailLock)}
             >
               <span className="fo-preset-switch" aria-hidden="true"><i /></span>
             </button>
@@ -441,7 +455,7 @@ function MoreSettings({ leadLock, onLeadLock, bgm, onBgmFile, onBgmClear, keepVo
 
 /* 拼接轨道上的一个片段：勾选后才参与本次合成，池内可多过 MAX_ACTIVE */
 function TrackClip({
-  mat, index, lead, active, activeRank, canActivate,
+  mat, index, lead, tail, active, activeRank, canActivate,
   dragging, onToggleActive, onRemove, onDragStart, onDrop, onDragEnd,
 }) {
   const didDrag = useRef(false);
@@ -450,9 +464,13 @@ function TrackClip({
     if (blocked) return;
     onToggleActive();
   };
+  const lockHint = lead && tail ? '片头+片尾锁定'
+    : lead ? '片头锁定'
+      : tail ? '片尾锁定'
+        : '';
   return (
     <div
-      className={`mix-clip ${active ? 'is-active' : ''} ${lead ? 'is-lead' : ''} ${dragging ? 'is-dragging' : ''} ${blocked ? 'is-blocked' : ''}`}
+      className={`mix-clip ${active ? 'is-active' : ''} ${lead ? 'is-lead' : ''} ${tail ? 'is-tail' : ''} ${dragging ? 'is-dragging' : ''} ${blocked ? 'is-blocked' : ''}`}
       draggable
       role="checkbox"
       aria-checked={active}
@@ -476,7 +494,7 @@ function TrackClip({
       onDragEnd={e => { e.currentTarget.classList.remove('is-over'); onDragEnd(); }}
       title={
         blocked ? `${mat.name} · 单次合成最多勾选 ${MAX_ACTIVE} 条`
-          : lead ? `${mat.name}（片头锁定）· 点击取消勾选 · 拖动调整顺序`
+          : lockHint ? `${mat.name}（${lockHint}）· 点击取消勾选 · 拖动调整顺序`
             : active ? `${mat.name} · 点击取消勾选 · 拖动调整顺序`
               : `${mat.name} · 点击勾选参与合成`
       }
@@ -502,6 +520,7 @@ function TrackClip({
           : <span className="mix-clip-fallback"><Video size={16} strokeWidth={1.6} /></span>}
         <span className="mix-clip-no">{active ? activeRank + 1 : index + 1}</span>
         {lead && <span className="mix-clip-lead">片头</span>}
+        {tail && <span className="mix-clip-tail">片尾</span>}
         <span className="mix-clip-time">{fmtTime(mat.duration)}</span>
         <GripVertical size={12} className="mix-clip-grip" aria-hidden="true" />
         <button
@@ -523,6 +542,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
   const [activeIds, setActiveIds] = useState(() => new Set()); // 勾选参与本次合成，≤ MAX_ACTIVE
   const [bgm, setBgm] = useState(null);
   const [leadLock, setLeadLock] = useState(false);
+  const [tailLock, setTailLock] = useState(false);
   const [keepVoice, setKeepVoice] = useState(true);
   const [segments, setSegments] = useState(3);
   const [transition, setTransition] = useState('fade');
@@ -557,7 +577,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
     [materials, activeIds],
   );
   const hasProgress = materials.length > 0 || batches.length > 0;
-  const total = countMixes(activeMaterials.length, segments, leadLock);
+  const total = countMixes(activeMaterials.length, segments, leadLock, tailLock);
   const need = minMaterials(segments);
   const willMake = total ? Math.min(total, limit) : 0;
   const allMixes = useMemo(() => batches.flatMap(b => b.mixes), [batches]);
@@ -777,7 +797,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
     if (warn || busy || !total) return;
     setBusy(true);
     setTimeout(() => {
-      const built = buildMixes(activeMaterials, segments, leadLock, limit);
+      const built = buildMixes(activeMaterials, segments, leadLock, limit, tailLock);
       const matsById = Object.fromEntries(activeMaterials.map(m => [m.id, {
         id: m.id, name: m.name, url: m.url, cover: m.cover, duration: m.duration,
       }]));
@@ -787,6 +807,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
         matsById,
         segments,
         leadLock,
+        tailLock,
         transition,
         transitionLabel,
         collapsed: false,
@@ -823,6 +844,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
       transition: row.batch.transition,
       transitionLabel: row.batch.transitionLabel,
       leadLock: row.batch.leadLock,
+      tailLock: row.batch.tailLock,
       segments: row.batch.segments,
     }));
     const firstUrl = variants[0]?.clips?.[0]?.url || 'test-clip.mp4';
@@ -938,6 +960,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                                   <em className="mix-batch-meta">
                                     {batch.mixes.length} 条 · {batch.transitionLabel}转场
                                     {batch.leadLock ? ' · 片头锁定' : ''}
+                                    {batch.tailLock ? ' · 片尾锁定' : ''}
                                   </em>
                                 </button>
                                 <label
@@ -1004,7 +1027,11 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                                             {mix.seq.map((id, k) => {
                                               const mat = batch.matsById[id];
                                               return (
-                                                <span key={`${id}-${k}`} className={`mix-seg ${batch.leadLock && k === 0 ? 'is-lead' : ''}`} title={mat?.name}>
+                                                <span
+                                                  key={`${id}-${k}`}
+                                                  className={`mix-seg ${batch.leadLock && k === 0 ? 'is-lead' : ''} ${batch.tailLock && k === mix.seq.length - 1 ? 'is-tail' : ''}`}
+                                                  title={mat?.name}
+                                                >
                                                   <span className="mix-seg-media">
                                                     {mat?.cover
                                                       ? <img src={mat.cover} alt="" />
@@ -1129,13 +1156,17 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                       {materials.map((mat, i) => {
                         const active = activeIds.has(mat.id);
                         const activeRank = active ? activeMaterials.findIndex(m => m.id === mat.id) : -1;
+                        const isLead = leadLock && active && activeRank === 0;
+                        const isTail = tailLock && active && activeRank === activeMaterials.length - 1
+                          && !(leadLock && activeMaterials.length === 1);
                         return (
                           <TrackClip
                             key={mat.id} mat={mat} index={i}
                             active={active}
                             activeRank={activeRank}
                             canActivate={activeIds.size < MAX_ACTIVE}
-                            lead={leadLock && active && activeRank === 0}
+                            lead={isLead}
+                            tail={isTail}
                             dragging={dragId === mat.id}
                             onToggleActive={() => toggleActive(mat.id)}
                             onRemove={removeMaterial}
@@ -1187,6 +1218,7 @@ export function BatchMixModal({ onClose, onRestart, visible = true, embedded = f
                     <MixPick value={limit} options={LIMIT_OPTS} onChange={setLimit} title="限制产出条数" align="right" />
                     <MoreSettings
                       leadLock={leadLock} onLeadLock={setLeadLock}
+                      tailLock={tailLock} onTailLock={setTailLock}
                       bgm={bgm}
                       onBgmFile={applyBgmFile}
                       onBgmClear={() => { revokeBlob(bgm?.url); setBgm(null); }}

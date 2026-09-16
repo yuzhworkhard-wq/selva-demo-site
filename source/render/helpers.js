@@ -390,6 +390,7 @@ function buildMixVariant(id, seqIds, status, opts = {}) {
     transition: opts.transition || 'fade',
     transitionLabel: opts.transitionLabel || '淡入淡出',
     leadLock: !!opts.leadLock,
+    tailLock: !!opts.tailLock,
     segments: clips.length,
   };
 }
@@ -398,11 +399,11 @@ const VMIX_TASK_SEEDS = {
   'T-20260831-M01': {
     mixMeta: { bgm: { name: '品牌BGM_轻快.mp3', duration: 48 }, keepVoice: true },
     variants: [
-      buildMixVariant('mix-1', ['mx-b', 'mx-a', 'mx-d'], 'done', { leadLock: true }),
-      buildMixVariant('mix-2', ['mx-b', 'mx-c', 'mx-f'], 'done', { leadLock: true, transitionLabel: '向左滑动', transition: 'slide-left' }),
-      buildMixVariant('mix-3', ['mx-b', 'mx-d', 'mx-e'], 'done', { leadLock: true }),
-      buildMixVariant('mix-4', ['mx-b', 'mx-a', 'mx-c'], 'done', { leadLock: true, transitionLabel: '递进', transition: 'push-up' }),
-      buildMixVariant('mix-5', ['mx-b', 'mx-e', 'mx-f'], 'done', { leadLock: true }),
+      buildMixVariant('mix-1', ['mx-b', 'mx-a', 'mx-f'], 'done', { leadLock: true, tailLock: true }),
+      buildMixVariant('mix-2', ['mx-b', 'mx-c', 'mx-f'], 'done', { leadLock: true, tailLock: true, transitionLabel: '向左滑动', transition: 'slide-left' }),
+      buildMixVariant('mix-3', ['mx-b', 'mx-d', 'mx-f'], 'done', { leadLock: true, tailLock: true }),
+      buildMixVariant('mix-4', ['mx-b', 'mx-e', 'mx-f'], 'done', { leadLock: true, tailLock: true, transitionLabel: '递进', transition: 'push-up' }),
+      buildMixVariant('mix-5', ['mx-b', 'mx-a', 'mx-c', 'mx-f'], 'done', { leadLock: true, tailLock: true }),
     ],
   },
   /* 合成进行中：有的成功、有的在合成、有的排队——详情态不用每次现跑 */

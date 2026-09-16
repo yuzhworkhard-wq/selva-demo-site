@@ -24,6 +24,16 @@ eq('首条 6 条 · 3 段 = 20', countMixes(6, 3, true), 20);
 eq('首条 6 条 · 4 段 = 60', countMixes(6, 4, true), 60);
 eq('首条 6 条 · 5 段 = 120', countMixes(6, 5, true), 120);
 
+// 片尾锁定：与片头对称
+eq('片尾 6 条 · 3 段 = 20', countMixes(6, 3, false, true), 20);
+eq('片尾 6 条 · 4 段 = 60', countMixes(6, 4, false, true), 60);
+
+// 头尾同锁：中间 P(n-2, k-2)
+eq('头尾 6 条 · 3 段 = 4', countMixes(6, 3, true, true), 4);
+eq('头尾 6 条 · 4 段 = 12', countMixes(6, 4, true, true), 12);
+eq('头尾 6 条 · 2 段 = 1', countMixes(6, 2, true, true), 1);
+eq('头尾 1 条 · 2 段 = 0', countMixes(1, 2, true, true), 0);
+
 // 素材不足
 eq('自由 2 条 · 3 段 = 0', countMixes(2, 3, false), 0);
 eq('首条 2 条 · 3 段 = 0', countMixes(2, 3, true), 0);
@@ -41,6 +51,21 @@ const lead3 = buildMixes(mats(6), 3, true, 0);
 eq('首条列举条数 = 20', lead3.length, 20);
 eq('首条恒为 m1', lead3.every(m => m.seq[0] === 'm1'), true);
 eq('首条成片仍是 3 段', lead3.every(m => m.seq.length === 3), true);
+
+// 片尾锁定：每条成片末段都是 m6
+const tail3 = buildMixes(mats(6), 3, false, 0, true);
+eq('片尾列举条数 = 20', tail3.length, 20);
+eq('片尾恒为 m6', tail3.every(m => m.seq[2] === 'm6'), true);
+eq('片尾成片仍是 3 段', tail3.every(m => m.seq.length === 3), true);
+
+// 头尾同锁
+const both3 = buildMixes(mats(6), 3, true, 0, true);
+eq('头尾列举条数 = 4', both3.length, 4);
+eq('头尾恒为 m1…m6', both3.every(m => m.seq[0] === 'm1' && m.seq[2] === 'm6' && m.seq.length === 3), true);
+
+const both2 = buildMixes(mats(4), 2, true, 0, true);
+eq('头尾 2 段 = 仅一条', both2.length, 1);
+eq('头尾 2 段序列', both2[0]?.seq, ['m1', 'm4']);
 
 const free5 = buildMixes(mats(6), 5, false, 10);
 eq('5 段列举截断 10', free5.length, 10);

@@ -4,8 +4,8 @@
    组合是**排列**不是组合：素材 1→2→3 和 3→2→1 是两条不同的广告，顺序本身就是差异来源。
    单条成片内一条素材至多出现一次，于是排列天然互不相同，不需要再做去重。
 
-   首条锁定：拿数据跑得好的那条片子当片头固定不动，只让后面的段落变。
-   此时片段数仍是**成片总段数**（含被锁的片头），可变的位置是 segments - 1 个。 */
+   片头 / 片尾锁定：勾选池排序第一条可锁为片头、最后一条可锁为片尾，二者可同开。
+   此时片段数仍是**成片总段数**（含被锁的头尾），可变的位置是 segments - 锁定位数。 */
 
 // 排列数 P(n, k)
 export function permutations(n, k) {
@@ -16,11 +16,15 @@ export function permutations(n, k) {
 }
 
 /** 当前配置能生成多少条成片（数学上限，不受「限制产出」截断） */
-export function countMixes(materialCount, segments, firstMode) {
+export function countMixes(materialCount, segments, leadLock = false, tailLock = false) {
   if (!materialCount || !segments) return 0;
-  return firstMode
-    ? permutations(materialCount - 1, segments - 1)   // 片头锁死，其余位置排列
-    : permutations(materialCount, segments);
+  const reserved = (leadLock ? 1 : 0) + (tailLock ? 1 : 0);
+  if (reserved > segments) return 0;
+  if (leadLock && tailLock && materialCount < 2) return 0;
+  const free = materialCount - reserved;
+  const slots = segments - reserved;
+  if (slots < 0 || free < slots) return 0;
+  return permutations(free, slots);
 }
 
 /** 生成所需的最少素材条数：两种模式都是「有几段就至少要几条」 */
@@ -29,10 +33,15 @@ export function minMaterials(segments) {
 }
 
 /** 列举全部成片；limit > 0 时按上限截断（0 = 不限制） */
-export function buildMixes(materials, segments, firstMode, limit = 0) {
-  const lead = firstMode ? materials[0] : null;
-  const pool = firstMode ? materials.slice(1) : materials;
-  const slots = firstMode ? segments - 1 : segments;
+export function buildMixes(materials, segments, leadLock = false, limit = 0, tailLock = false) {
+  if (!materials?.length || !segments) return [];
+  const lead = leadLock ? materials[0] : null;
+  const tail = tailLock ? materials[materials.length - 1] : null;
+  if (lead && tail && lead.id === tail.id) return [];
+
+  const reservedIds = new Set([lead?.id, tail?.id].filter(Boolean));
+  const pool = materials.filter(m => !reservedIds.has(m.id));
+  const slots = segments - reservedIds.size;
   if (slots < 0 || pool.length < slots) return [];
 
   const out = [];
@@ -48,7 +57,11 @@ export function buildMixes(materials, segments, firstMode, limit = 0) {
   const walk = () => {
     if (out.length >= cap) return;
     if (picked.length === slots) {
-      const seq = lead ? [lead.id, ...picked] : [...picked];
+      const seq = [
+        ...(lead ? [lead.id] : []),
+        ...picked,
+        ...(tail ? [tail.id] : []),
+      ];
       out.push({ id: seq.join('>'), seq, duration: durationOf(seq) });
       return;
     }
