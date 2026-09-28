@@ -34,6 +34,162 @@ let libraryAssets = [
   { id: 'la-3', name: '王芳-海外参考素材', desc: '竞品视频截取片段', creator: 'u3', scope: 'personal', createdAt: '2026-03-18', fileCount: 4, format: 'mp4', tags: ['海外','参考'], files: ['竞品_A.mp4','竞品_B.mp4','竞品_C.mp4','竞品_D.mp4'] },
 ];
 
+// ===== Library: Product Packs（产品包）=====
+// 图片路径相对主站：clone/ 下为视频工具静态资源；支付 logo 用 SVG data URI
+function _packPayLogo(name, color) {
+  const label = String(name || 'Pay').slice(0, 12);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240"><rect width="240" height="240" rx="48" fill="${color}"/><text x="120" y="128" text-anchor="middle" font-family="system-ui,sans-serif" font-size="36" font-weight="700" fill="#fff">${label}</text></svg>`;
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+function _packAppLogo(name, color) {
+  const ch = String(name || 'A').trim().charAt(0).toUpperCase() || 'A';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240"><rect width="240" height="240" rx="52" fill="${color}"/><text x="120" y="148" text-anchor="middle" font-family="system-ui,sans-serif" font-size="110" font-weight="700" fill="#fff">${ch}</text></svg>`;
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+/* 产品设定里支付 logo 与纸钞都由 AI 按名称生成；demo 用 clone/product-packs/ 下预置的真实图片当生成结果，
+   平台和 iframe 同一份。预置里没有的名称退回文字徽标。 */
+const PACK_PAYMENT_LOGOS = {
+  'mercado pago': 'mercadopago.svg', 'payid': 'payid.png', 'pix': 'pix.png', 'interac': 'interac.png',
+  'webpay': 'webpay.svg', 'nequi': 'nequi.png', 'paypal': 'paypal.png', 'deuna': 'deuna.png',
+  'dana': 'dana.png', 'paypay': 'paypay.png', 'm-pesa': 'mpesa.png', 'mpesa': 'mpesa.png',
+  'kakaopay': 'kakaopay.png', 'kakao pay': 'kakaopay.png', 'frimi': 'frimi.png', 'oxxo': 'oxxo.png',
+  "touch 'n go": 'touchngo.png', 'touch n go': 'touchngo.png', 'tng': 'touchngo.png', 'opay': 'opay.png',
+  'yape': 'yape.png', 'gcash': 'gcash.png', 'jazzcash': 'jazzcash.png', 'promptpay': 'promptpay.png',
+  'papara': 'papara.png', 'line pay': 'linepay.png', 'linepay': 'linepay.png', 'momo': 'momo.png',
+  'snapscan': 'snapscan.png',
+};
+function packPaymentLogo(name, color) {
+  const file = PACK_PAYMENT_LOGOS[String(name || '').trim().toLowerCase()];
+  return file ? `clone/product-packs/payments/${file}` : _packPayLogo(name, color || '#16a34a');
+}
+/* 与爆款视频库 VIDEO_REGIONS（apps/video-clone/src/videoRegionConfig.mjs）同名单；
+   payment/color 为当地主流支付方式，code/currencyZh 对应 clone/product-packs/notes/<code>.jpg 的当地纸钞。 */
+const PACK_REGION_OPTIONS = [
+  { value: 'ar', label: '阿根廷', payment: 'Mercado Pago', color: '#009ee3', code: 'ARS', symbol: '$', note: 1000, noteColor: '#c47a3a', currencyZh: '阿根廷比索' },
+  { value: 'au', label: '澳大利亚', payment: 'PayID', color: '#e31837', code: 'AUD', symbol: '$', note: 50, noteColor: '#c9a23a', currencyZh: '澳元' },
+  { value: 'br', label: '巴西', payment: 'Pix', color: '#32bcad', code: 'BRL', symbol: 'R$', note: 100, noteColor: '#3a8fc4', currencyZh: '雷亚尔' },
+  { value: 'ca', label: '加拿大', payment: 'Interac', color: '#f7a800', code: 'CAD', symbol: '$', note: 20, noteColor: '#3f9a5a', currencyZh: '加元' },
+  { value: 'cl', label: '智利', payment: 'Webpay', color: '#e30613', code: 'CLP', symbol: '$', note: 10000, noteColor: '#3a6fb3', currencyZh: '智利比索' },
+  { value: 'co', label: '哥伦比亚', payment: 'Nequi', color: '#200020', code: 'COP', symbol: '$', note: 50000, noteColor: '#8a5a9e', currencyZh: '哥伦比亚比索' },
+  { value: 'de', label: '德国', payment: 'PayPal', color: '#0070ba', code: 'EUR', symbol: '€', note: 50, noteColor: '#d9823a', currencyZh: '欧元' },
+  { value: 'ec', label: '厄瓜多尔', payment: 'Deuna', color: '#00a651', code: 'USD', symbol: '$', note: 100, noteColor: '#6f8f6a', currencyZh: '美元' },
+  { value: 'fr', label: '法国', payment: 'PayPal', color: '#0070ba', code: 'EUR', symbol: '€', note: 50, noteColor: '#d9823a', currencyZh: '欧元' },
+  { value: 'id', label: '印度尼西亚', payment: 'Dana', color: '#118ee9', code: 'IDR', symbol: 'Rp', note: 100000, noteColor: '#d0524e', currencyZh: '印尼盾' },
+  { value: 'jp', label: '日本', payment: 'PayPay', color: '#ff0033', code: 'JPY', symbol: '¥', note: 10000, noteColor: '#9a7b4f', currencyZh: '日元' },
+  { value: 'ke', label: '肯尼亚', payment: 'M-Pesa', color: '#00a651', code: 'KES', symbol: 'KSh', note: 1000, noteColor: '#b5843a', currencyZh: '肯尼亚先令' },
+  { value: 'kr', label: '韩国', payment: 'KakaoPay', color: '#ffe812', code: 'KRW', symbol: '₩', note: 50000, noteColor: '#c99a36', currencyZh: '韩元' },
+  { value: 'lk', label: '斯里兰卡', payment: 'FriMi', color: '#8b1e3f', code: 'LKR', symbol: 'Rs', note: 5000, noteColor: '#d0773a', currencyZh: '斯里兰卡卢比' },
+  { value: 'mx', label: '墨西哥', payment: 'OXXO', color: '#e11d48', code: 'MXN', symbol: '$', note: 500, noteColor: '#4a8fc4', currencyZh: '墨西哥比索' },
+  { value: 'my', label: '马来西亚', payment: "Touch 'n Go", color: '#0056a4', code: 'MYR', symbol: 'RM', note: 100, noteColor: '#8a5aa8', currencyZh: '林吉特' },
+  { value: 'ng', label: '尼日利亚', payment: 'OPay', color: '#1dcf9f', code: 'NGN', symbol: '₦', note: 1000, noteColor: '#8a6a4a', currencyZh: '奈拉' },
+  { value: 'nz', label: '新西兰', payment: 'PayPal', color: '#0070ba', code: 'NZD', symbol: '$', note: 100, noteColor: '#c44a4a', currencyZh: '新西兰元' },
+  { value: 'pe', label: '秘鲁', payment: 'Yape', color: '#7b2d8e', code: 'PEN', symbol: 'S/', note: 100, noteColor: '#3a7fb3', currencyZh: '索尔' },
+  { value: 'ph', label: '菲律宾', payment: 'GCash', color: '#007cff', code: 'PHP', symbol: '₱', note: 1000, noteColor: '#4a8fc4', currencyZh: '菲律宾比索' },
+  { value: 'pk', label: '巴基斯坦', payment: 'JazzCash', color: '#ed1c24', code: 'PKR', symbol: 'Rs', note: 5000, noteColor: '#b8963a', currencyZh: '巴基斯坦卢比' },
+  { value: 'th', label: '泰国', payment: 'PromptPay', color: '#1d4ed8', code: 'THB', symbol: '฿', note: 1000, noteColor: '#8a6a4a', currencyZh: '泰铢' },
+  { value: 'tr', label: '土耳其', payment: 'Papara', color: '#8b3dff', code: 'TRY', symbol: '₺', note: 200, noteColor: '#9a6ab5', currencyZh: '土耳其里拉' },
+  { value: 'tw', label: '中国台湾', payment: 'LINE Pay', color: '#00c300', code: 'TWD', symbol: 'NT$', note: 1000, noteColor: '#4a7fb3', currencyZh: '新台币' },
+  { value: 'uk', label: '英国', payment: 'PayPal', color: '#0070ba', code: 'GBP', symbol: '£', note: 50, noteColor: '#c44a4a', currencyZh: '英镑' },
+  { value: 'us', label: '美国', payment: 'PayPal', color: '#0070ba', code: 'USD', symbol: '$', note: 100, noteColor: '#6f8f6a', currencyZh: '美元' },
+  { value: 'uy', label: '乌拉圭', payment: 'Mercado Pago', color: '#009ee3', code: 'UYU', symbol: '$', note: 1000, noteColor: '#6a8fb3', currencyZh: '乌拉圭比索' },
+  { value: 'vn', label: '越南', payment: 'MoMo', color: '#a50064', code: 'VND', symbol: '₫', note: 500000, noteColor: '#4a7fb3', currencyZh: '越南盾' },
+  { value: 'za', label: '南非', payment: 'SnapScan', color: '#e31c23', code: 'ZAR', symbol: 'R', note: 200, noteColor: '#b8963a', currencyZh: '兰特' },
+];
+function _packNoteOf(r) {
+  return { noteName: `${r.currencyZh} ${r.code}`, noteImage: `clone/product-packs/notes/${r.code.toLowerCase()}.jpg` };
+}
+function packRegionNote(regionValue) {
+  const r = PACK_REGION_OPTIONS.find(o => o.value === regionValue);
+  return r ? _packNoteOf(r) : { noteName: '', noteImage: null };
+}
+/* 「输入名称重新生成」纸钞：币种代码 / 币种中文名 / 国家名都能认；认不出的出一张文字示意钞 */
+function packNoteByName(query) {
+  const q = String(query || '').trim().toLowerCase();
+  const r = PACK_REGION_OPTIONS.find(o => [o.code, o.currencyZh, o.label, o.value].some(k => k.toLowerCase() === q))
+    || PACK_REGION_OPTIONS.find(o => [o.currencyZh, o.label].some(k => k.includes(q) || q.includes(k)));
+  if (r) return _packNoteOf(r);
+  const label = String(query).slice(0, 10);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="150" viewBox="0 0 320 150"><rect x="4" y="4" width="312" height="142" rx="10" fill="#5f8f6a"/><rect x="14" y="14" width="292" height="122" rx="6" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="2"/><circle cx="80" cy="75" r="36" fill="#fff" fill-opacity=".18"/><text x="200" y="88" text-anchor="middle" font-family="system-ui,sans-serif" font-size="30" font-weight="700" fill="#fff">${label.replace(/[<>&"]/g, '')}</text></svg>`;
+  return { noteName: label, noteImage: 'data:image/svg+xml,' + encodeURIComponent(svg) };
+}
+/* 与爆款库 REGION_GROUPS 同组；热门与地理组允许重复。 */
+const PACK_REGION_GROUPS = [
+  { id: 'hot', label: '热门', values: ['us', 'tw', 'jp', 'kr', 'id', 'ph', 'th', 'br', 'vn', 'mx'] },
+  { id: 'greater-china', label: '港澳台', values: ['tw'] },
+  { id: 'east-asia', label: '东亚', values: ['jp', 'kr'] },
+  { id: 'southeast-asia', label: '东南亚', values: ['th', 'id', 'my', 'vn', 'ph'] },
+  { id: 'south-asia', label: '南亚', values: ['lk', 'pk'] },
+  { id: 'europe', label: '欧洲', values: ['de', 'fr', 'uk'] },
+  { id: 'north-america', label: '北美洲', values: ['us', 'ca'] },
+  { id: 'latin-america', label: '拉丁美洲', values: ['ar', 'br', 'cl', 'co', 'ec', 'mx', 'pe', 'uy'] },
+  { id: 'oceania', label: '大洋洲', values: ['au', 'nz'] },
+  { id: 'africa', label: '非洲', values: ['ke', 'ng', 'za'] },
+  { id: 'west-asia', label: '西亚', values: ['tr'] },
+];
+let libraryProductPacks = [
+  {
+    id: 'pp-1', name: 'CashDrama', desc: '看短剧赚钱 · Pix 结算', region: 'br',
+    playUrl: 'https://play.google.com/store/apps/details?id=com.xj.cash.drama',
+    logo: 'clone/product-packs/cashdrama/icon.png',
+    appImages: [
+      'clone/product-packs/cashdrama/shot_01.jpg',
+      'clone/product-packs/cashdrama/shot_02.jpg',
+      'clone/product-packs/cashdrama/shot_03.jpg',
+    ],
+    paymentName: 'Pix', paymentLogo: null,
+    creator: 'u1', createdAt: '2026-04-10',
+  },
+  {
+    id: 'pp-2', name: 'Lucky Flower Drop', desc: '鲜花消除 · Dana 支付', region: 'id',
+    playUrl: 'https://play.google.com/store/apps/details?id=com.lucky.flower.puzzle.game',
+    logo: 'clone/product-packs/luckyflower/icon.png',
+    appImages: [
+      'clone/product-packs/luckyflower/shot_01.jpg',
+      'clone/product-packs/luckyflower/shot_02.jpg',
+      'clone/product-packs/luckyflower/shot_03.jpg',
+    ],
+    paymentName: 'Dana', paymentLogo: null,
+    creator: 'u1', createdAt: '2026-04-08',
+  },
+];
+libraryProductPacks[0].paymentLogo = packPaymentLogo('Pix');
+libraryProductPacks[1].paymentLogo = packPaymentLogo('Dana');
+libraryProductPacks.forEach(p => Object.assign(p, packRegionNote(p.region)));
+
+/* 创建产品包：已知 Play 包名 → 真实演示素材（从 Google Play 抓的图标与截图） */
+const PLAY_LISTING_DEMOS = {
+  'com.xj.cash.drama': {
+    name: 'CashDrama',
+    desc: '看短剧赚钱 · 免费短剧与提现奖励',
+    preferredRegion: 'br',
+    logo: 'clone/product-packs/cashdrama/icon.png',
+    appImages: [
+      'clone/product-packs/cashdrama/shot_01.jpg',
+      'clone/product-packs/cashdrama/shot_02.jpg',
+      'clone/product-packs/cashdrama/shot_03.jpg',
+    ],
+  },
+  'com.lucky.flower.puzzle.game': {
+    name: 'Lucky Flower Drop',
+    desc: '鲜花消除解谜 · 轻松益智',
+    preferredRegion: 'id',
+    logo: 'clone/product-packs/luckyflower/icon.png',
+    appImages: [
+      'clone/product-packs/luckyflower/shot_01.jpg',
+      'clone/product-packs/luckyflower/shot_02.jpg',
+      'clone/product-packs/luckyflower/shot_03.jpg',
+    ],
+  },
+};
+const DEMO_PLAY_URL = 'https://play.google.com/store/apps/details?id=com.xj.cash.drama';
+
+function resolvePlayListingDemo(playUrl) {
+  const idMatch = String(playUrl || '').match(/[?&]id=([^&]+)/);
+  if (!idMatch) return null;
+  const pkg = decodeURIComponent(idMatch[1]);
+  return PLAY_LISTING_DEMOS[pkg] || null;
+}
+
 // ===== Library: Characters (AI 角色库) =====
 // gender: female/male; age: young(青年)/adult(成年)/middle(中年)/senior(老年)
 // ethnicity: white(欧美白人)/black(非裔黑人)/east-asian(东亚)/south-asian(南亚东南亚)/latino(拉丁裔)/mena(中东北非)

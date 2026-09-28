@@ -5332,8 +5332,15 @@ function renderLibrary() {
   const container = document.getElementById('library-content');
   if (!container) return;
 
+  // 每次输入都会整块重绘，搜索框要自己把值和光标带回来，否则打第二个字符时前面的已被清空
+  const prevSearch = document.getElementById('lib-search');
+  const searchValue = prevSearch ? prevSearch.value : '';
+  const searchFocused = prevSearch && document.activeElement === prevSearch;
+  const searchCaret = prevSearch ? prevSearch.selectionStart : null;
+
   const tabs = [
     { id: 'characters', label: '🎭 角色', count: libraryCharacters.length },
+    { id: 'product-packs', label: '📦 产品包', count: libraryProductPacks.length },
     { id: 'scripts', label: '📝 脚本', count: libraryScripts.length },
     { id: 'assets', label: '🎞 素材', count: libraryAssets.length },
     { id: 'workflows', label: '🔁 工作流', count: globalWorkflows.length },
@@ -5343,7 +5350,7 @@ function renderLibrary() {
     ? '<button class="btn btn-primary" onclick="showModal(\'import-script\')">+ 导入脚本</button>'
     : libraryTab === 'assets'
     ? '<button class="btn btn-primary" onclick="showModal(\'import-asset\')">+ 导入素材</button>'
-    : libraryTab === 'characters'
+    : libraryTab === 'characters' || libraryTab === 'product-packs'
     ? ''
     : '<button class="btn btn-primary" onclick="showModal(\'library-workflow\')">+ 新建工作流</button>';
 
@@ -5352,11 +5359,15 @@ function renderLibrary() {
     contentHtml = renderLibraryItems(libraryScripts, '脚本', '📝');
   } else if (libraryTab === 'assets') {
     contentHtml = renderLibraryItems(libraryAssets, '素材', '🎞');
+  } else if (libraryTab === 'product-packs') {
+    contentHtml = renderLibraryProductPacks();
   } else if (libraryTab === 'characters') {
     contentHtml = renderLibraryCharacters();
   } else {
     contentHtml = renderLibraryWorkflows();
   }
+
+  const hideLibFilter = libraryTab === 'characters' || libraryTab === 'product-packs';
 
   container.innerHTML = `
     <div class="projects-header">
@@ -5369,7 +5380,7 @@ function renderLibrary() {
           <div class="tab-switch-item ${libraryTab === t.id ? 'active' : ''}" onclick="setLibraryTab('${t.id}')">${t.label} <span style="font-size:11px; opacity:0.6; margin-left:4px;">${t.count}</span></div>
         `).join('')}
       </div>
-      ${libraryTab === 'characters' ? '' : `
+      ${hideLibFilter ? '' : `
       <select onchange="setLibFilter(this.value)" style="background:#16161f; border:1px solid #2a2a3a; border-radius:8px; color:#e0e0e0; padding:8px 12px; font-size:13px; outline:none; min-width:100px; cursor:pointer;">
         <option value="mine" ${libFilter === 'mine' ? 'selected' : ''}>我的</option>
         <option value="team" ${libFilter === 'team' ? 'selected' : ''}>共享</option>
@@ -5377,11 +5388,147 @@ function renderLibrary() {
       </select>`}
     </div>
     <div class="search-bar" style="margin-bottom:16px;">
-      <input type="text" placeholder="搜索..." id="lib-search" oninput="renderLibrary()">
+      <input type="text" placeholder="搜索..." id="lib-search" value="${escapeHtml(searchValue)}" oninput="renderLibrary()">
     </div>
     <div id="library-list">${contentHtml}</div>
   `;
+
+  if (searchFocused) {
+    const nextSearch = document.getElementById('lib-search');
+    if (nextSearch) {
+      nextSearch.focus();
+      if (searchCaret != null) nextSearch.setSelectionRange(searchCaret, searchCaret);
+    }
+  }
 }
+
+let packMenuOpenId = null;
+
+function togglePackCardMenu(packId, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  packMenuOpenId = packMenuOpenId === packId ? null : packId;
+  renderLibrary();
+}
+
+function closePackCardMenu() {
+  if (!packMenuOpenId) return;
+  packMenuOpenId = null;
+  renderLibrary();
+}
+
+function packAssetList(item) {
+  const list = [];
+  if (item.logo) list.push({ url: item.logo, kind: 'logo' });
+  (item.appImages || []).forEach((u, i) => { if (u) list.push({ url: u, kind: 'app', i }); });
+  if (item.paymentLogo) list.push({ url: item.paymentLogo, kind: 'pay' });
+  if (item.noteImage) list.push({ url: item.noteImage, kind: 'note' });
+  return list;
+}
+
+function renderLibraryProductPacks() {
+  const q = (document.getElementById('lib-search')?.value || '').toLowerCase();
+  const list = libraryProductPacks.filter(item => {
+    const matchQ = !q
+      || item.name.toLowerCase().includes(q)
+      || (item.desc || '').toLowerCase().includes(q)
+      || (item.paymentName || '').toLowerCase().includes(q)
+      || (item.noteName || '').toLowerCase().includes(q);
+    return matchQ;
+  });
+
+  const cards = list.map(item => {
+    const isMine = item.creator === currentUser.id;
+    const regionMeta = (typeof PACK_REGION_OPTIONS !== 'undefined'
+      ? PACK_REGION_OPTIONS.find(r => r.value === item.region)
+      : null);
+    const regionLabel = regionMeta ? regionMeta.label : (item.region || '未设置地区');
+    const shots = (item.appImages || []).filter(Boolean).slice(0, 3);
+    const assetCount = packAssetList(item).length;
+    const menuOpen = packMenuOpenId === item.id;
+
+    // 三格固定：不足 3 张画面时留虚线空槽，整排卡片高度才对齐
+    const shotCells = [0, 1, 2].map(i => shots[i]
+      ? `<div class="pp-shot"><img src="${shots[i]}" alt="" loading="lazy"></div>`
+      : '<div class="pp-shot pp-shot--empty"></div>').join('');
+
+    return `
+      <article class="pp-card">
+        <button type="button" class="pp-open" onclick="openProductPackPreview('${item.id}')">查看「${escapeHtml(item.name)}」产品包详情</button>
+        <div class="pp-head">
+          <div class="pp-logo${item.logo ? '' : ' pp-logo--empty'}">
+            ${item.logo
+              ? `<img src="${item.logo}" alt="" loading="lazy">`
+              : escapeHtml((item.name || '?').charAt(0).toUpperCase())}
+          </div>
+          <div class="pp-ident">
+            <div class="pp-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
+            <div class="pp-sub">
+              <span>${escapeHtml(regionLabel)}</span>
+              <span class="pp-sub-dot">·</span>
+              <span class="pp-pay">
+                ${item.paymentLogo ? `<img src="${item.paymentLogo}" alt="">` : ''}
+                <span>${escapeHtml(item.paymentName || '未设置支付')}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="pp-shots" aria-hidden="true">${shotCells}</div>
+        <div class="pp-foot">
+          <span>${assetCount} 项素材 · ${shots.length} 张画面</span>
+        </div>
+        <div class="pp-menu-wrap">
+          <button type="button" class="pp-more" onclick="togglePackCardMenu('${item.id}', event)" aria-label="更多操作" aria-expanded="${menuOpen}">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
+          </button>
+          ${menuOpen ? `
+          <div class="pp-menu" onclick="event.stopPropagation()">
+            <button type="button" onclick="openProductPackPreview('${item.id}'); closePackCardMenu();">查看详情</button>
+            <button type="button" onclick="useProductPackInVideoGen('${item.id}'); closePackCardMenu();">用它生成视频</button>
+            ${isMine ? `<button type="button" class="is-danger" onclick="deleteLibItem('${item.id}'); closePackCardMenu();">删除</button>` : ''}
+          </div>` : ''}
+        </div>
+      </article>`;
+  }).join('');
+
+  const emptyBlock = list.length ? '' : `
+    <div class="pp-empty">
+      ${q
+        ? '没有符合条件的产品包<br>换个关键词试试'
+        : '还没有产品包<br>点「创建产品包」，粘贴 Google 应用链接即可自动识别素材'}
+    </div>`;
+
+  return `
+    <div class="char-filter-bar">
+      <span class="char-filter-label">共 ${list.length} 个产品包</span>
+    </div>
+    <div class="pp-grid">
+      <button type="button" class="pp-card pp-card--create" onclick="showModal('create-product-pack')">
+        <div class="pp-create-inner">
+          <div class="char-create-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
+          <div>
+            <div class="char-create-title">创建产品包</div>
+            <div class="char-create-sub">从应用链接自动识别素材</div>
+          </div>
+        </div>
+      </button>
+      ${cards}
+    </div>
+    ${emptyBlock}
+  `;
+}
+
+function openProductPackPreview(packId) {
+  packMenuOpenId = null;
+  const pack = libraryProductPacks.find(p => p.id === packId);
+  if (!pack) {
+    toast('找不到该产品包');
+    return;
+  }
+  showModal('product-pack-preview', packId);
+}
+window.openProductPackPreview = openProductPackPreview;
+window.togglePackCardMenu = togglePackCardMenu;
+window.closePackCardMenu = closePackCardMenu;
 
 function renderLibraryItems(dataList, typeName, icon) {
   const q = (document.getElementById('lib-search')?.value || '').toLowerCase();
@@ -5593,7 +5740,8 @@ function renderLibraryCharacters() {
 }
 
 function toggleLibItemScope(itemId, newScope) {
-  let item = libraryScripts.find(s => s.id === itemId) || libraryAssets.find(a => a.id === itemId);
+  let item = libraryScripts.find(s => s.id === itemId)
+    || libraryAssets.find(a => a.id === itemId);
   if (item && item.creator === currentUser.id) {
     item.scope = newScope;
     renderLibrary();
@@ -5615,6 +5763,15 @@ function deleteLibItem(itemId) {
     const item = libraryAssets[idx];
     libraryAssets.splice(idx, 1);
     renderLibrary();
+    toast(`"${item.name}" 已删除`);
+    return;
+  }
+  idx = libraryProductPacks.findIndex(p => p.id === itemId);
+  if (idx >= 0) {
+    const item = libraryProductPacks[idx];
+    libraryProductPacks.splice(idx, 1);
+    renderLibrary();
+    if (typeof pushProductPacksToCloneTool === 'function') pushProductPacksToCloneTool();
     toast(`"${item.name}" 已删除`);
   }
 }

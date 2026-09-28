@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import {
   X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Loader2, Check, Clock,
   ArrowLeft, ArrowUp, Plus, Film, Clapperboard, Music, Lock, AlertCircle,
   LayoutGrid, List, Copy, GitBranch, Settings, Wand2, Search, Calendar, DollarSign, Download, Play,
-  Upload, FolderOpen, UserRound, Image as ImageIcon, Bookmark, Flame, Share2,
+  Upload, FolderOpen, UserRound, Image as ImageIcon, Bookmark, Flame, Share2, Package,
 } from 'lucide-react';
 import { notifyHostModal } from './hostModal';
 import { buildVariantScripts } from './briefParser';
@@ -20,6 +20,9 @@ import {
 } from './viralLibrary.mjs';
 import { regionLabelByIndex } from './videoRegionConfig.mjs';
 import { LibraryRegionPicker } from './RegionPickerPanel';
+import {
+  getProductPacks, subscribeProductPacks, packImageUrls, regionLabel as packRegionLabel,
+} from './productPacks.mjs';
 
 /* ── 输入卡控件选项（视频生成语义，全部真下拉）── */
 const ASPECTS = ['9:16', '1:1', '16:9'];
@@ -84,13 +87,16 @@ const LIB_TABS = [
 
 /* 生成前的拦截：把「当前模型不允许的状态」逐条列出来。非空 = 生成按钮不给点，
    同时把第一条摆到底栏上方——错在哪、要删几个，说清楚了才算拦得住。 */
-function genIssues(model, refs, promptText = '') {
+function genIssues(model, refs, promptText = '', { magic = 'off', pack = null } = {}) {
   const cfg = modelCfg(model);
   const displayModel = modelLabel(model);
   const issues = [];
-  if (cfg.imageRequired && refs.image.length === 0) issues.push(`${displayModel} 必须上传 1 张首帧图才能生成`);
+  const packUrls = (magic !== 'off' && pack) ? packImageUrls(pack) : [];
+  const effectiveImages = refs.image.length + packUrls.length;
+  if (cfg.imageRequired && effectiveImages === 0) issues.push(`${displayModel} 必须上传 1 张首帧图才能生成`);
   REF_KINDS.forEach(({ key }) => {
     const max = cfg.limits[key];
+    // 产品包图在 Magic 开启时注入，不计入「用户手动挂的」超限；但仍要避免手动图已超
     const over = refs[key].length - max;
     if (over <= 0) return;
     const label = kindLabel(model, key);
@@ -98,7 +104,6 @@ function genIssues(model, refs, promptText = '') {
       ? `${displayModel} 不支持${label}，请移除已添加的 ${refs[key].length} 个`
       : `${displayModel} 最多 ${max} 个${label}，请移除 ${over} 个`);
   });
-  // 字数上限由配置驱动：从长的那档换到短的，已写的字不替用户砍
   const overChars = promptText.length - cfg.maxChars;
   if (overChars > 0) issues.push(`${displayModel} 提示词最多 ${cfg.maxChars} 字，请删掉 ${overChars} 字`);
   return issues;
@@ -668,6 +673,7 @@ export function VideoGenModal({
   onClose, onRestart, visible = true, embedded = false,
   onSubmitTask = null, initialVideoUrl = null, initialTaskId = null,
   onOpenLibrary = null, onStartClone = null, onStartFanout = null,
+  mountPackSeed = null,   // 平台资源库「用它生成视频」带进来的产品包 {id, seq}
   // 「重新编辑」注入：把用户上次写的输入和出参设置原样摆回去
   initialSourceText = '', initialImages = null, initialCount = 0,
   initialVideos = null, initialAudios = null,
@@ -678,6 +684,14 @@ export function VideoGenModal({
   const [attachedImages, setAttachedImages] = useState(() => toRefItems(initialImages));
   const [attachedVideos, setAttachedVideos] = useState(() => toRefItems(initialVideos));
   const [attachedAudios, setAttachedAudios] = useState(() => toRefItems(initialAudios));
+  const [mountedPack, setMountedPack] = useState(null); // 一次只挂 1 个产品包
+  /* 平台带包进来：宿主先推产品包全量再发 open，postMessage 保序，所以这里一定查得到。
+     用 seq 而不是 id 做依赖——用户手动取消挂载后，从库里再点同一个包还要能挂回来。 */
+  useEffect(() => {
+    if (!mountPackSeed || !mountPackSeed.id) return;
+    const pack = getProductPacks().find(p => p.id === mountPackSeed.id);
+    if (pack) setMountedPack(pack);
+  }, [mountPackSeed && mountPackSeed.seq]);   // eslint-disable-line react-hooks/exhaustive-deps
   // 老任务里存的是已下线的模型名，「重新编辑」回来时落回默认档，不能把不存在的模型摆出来
   const [videoModel, setVideoModel] = useState(() => (VIDEO_MODEL_CONFIG[initialModel] ? initialModel : DEFAULT_MODEL));
   const [aspect, setAspect] = useState(initialAspect || '9:16');
@@ -707,7 +721,7 @@ export function VideoGenModal({
   const refs = { image: attachedImages, video: attachedVideos, audio: attachedAudios };
   const setRefs = { image: setAttachedImages, video: setAttachedVideos, audio: setAttachedAudios };
   const refCount = attachedImages.length + attachedVideos.length + attachedAudios.length;
-  const issues = genIssues(videoModel, refs, promptText);
+  const issues = genIssues(videoModel, refs, promptText, { magic, pack: mountedPack });
   const longMode = needsOrchestration(modelCfg(videoModel), duration);
 
   // 长视频固定 1 条
@@ -715,7 +729,7 @@ export function VideoGenModal({
     if (longMode) setCount(1);
   }, [longMode]);
 
-  const hasProgress = submitting || refCount > 0 || promptText.trim().length > 0;
+  const hasProgress = submitting || refCount > 0 || promptText.trim().length > 0 || !!mountedPack;
   const exit = () => onClose(hasProgress);
 
   const [resumeAsk, setResumeAsk] = useState(false);
@@ -801,17 +815,23 @@ export function VideoGenModal({
   const handleGenerate = () => {
     if (issues.length) return;   // 按钮此时是灰的，这里兜底防回车直发
     if (needsOrchestration(modelCfg(videoModel), duration)) {
+      const packUrls = mountedPack ? packImageUrls(mountedPack) : [];
+      const imageUrls = [...attachedImages.map(a => a.url), ...packUrls];
       submitTask([], 1, {
         longVideo: true,
         longPhase: 'expanding',
         name: '长视频生成',
         magic: 'on',
         openTask: true,
+        images: imageUrls,
       });
       return;
     }
-    const list = buildVariantScripts(promptText, attachedImages.map(a => a.url), magic, count);
-    submitTask(list, count);
+    // Magic ≠ off：把产品包图并进扩写用的 imageUrls（任务中心脚本里会出现 @图片N）
+    const packUrls = (magic !== 'off' && mountedPack) ? packImageUrls(mountedPack) : [];
+    const imageUrls = [...attachedImages.map(a => a.url), ...packUrls];
+    const list = buildVariantScripts(promptText, imageUrls, magic, count);
+    submitTask(list, count, { images: imageUrls });
   };
 
   // 短暂过渡后上报任务（生成中）。提交完【留在原地】——画面不变，只在顶部给一条轻提示，
@@ -828,6 +848,17 @@ export function VideoGenModal({
       ...imgUrls,
       ...attachedVideos.map(a => a.url), ...attachedAudios.map(a => a.url),
     ])];
+    const packPayload = mountedPack ? {
+      id: mountedPack.id,
+      name: mountedPack.name,
+      region: mountedPack.region,
+      logo: mountedPack.logo,
+      appImages: mountedPack.appImages || [],
+      paymentName: mountedPack.paymentName,
+      paymentLogo: mountedPack.paymentLogo,
+      noteName: mountedPack.noteName,
+      noteImage: mountedPack.noteImage,
+    } : null;
     setTimeout(() => {
       if (onSubmitTask) onSubmitTask({
         taskId: initialTaskId,
@@ -840,6 +871,7 @@ export function VideoGenModal({
           : promptText,
         sourceText: promptText,               // 原始输入，详情页里可展开对照
         images: imgUrls,
+        productPack: packPayload,
         refVideos: attachedVideos, refAudios: attachedAudios,   // 参考视频/音频：{url,name}，详情页只报名字
         model: videoModel, aspect, outDuration: duration, magic: extra.magic || magic,
         region: 'pt-BR', toolName: '视频生成', status: 'generating',
@@ -855,6 +887,7 @@ export function VideoGenModal({
       setAttachedImages([]);
       setAttachedVideos([]);
       setAttachedAudios([]);
+      setMountedPack(null);
       showToast(extra.longVideo
         ? '长视频任务已创建，脚本扩写进行中'
         : (n > 1 ? `${n} 条视频已提交至任务中心` : '视频已提交至任务中心'));
@@ -881,6 +914,7 @@ export function VideoGenModal({
               onRemoveRef={handleRemoveRef} issues={issues}
               onApplyTemplate={handleApplyTemplate}
               onOpenLibrary={handleOpenLibrary}
+              mountedPack={mountedPack} onMountPack={setMountedPack}
               videoModel={videoModel} setVideoModel={handleModelChange}
               aspect={aspect} setAspect={setAspect} duration={duration} setDuration={setDuration}
               magic={magic} setMagic={setMagic}
@@ -1158,6 +1192,111 @@ export function LibraryPickDialog({ model, refs, onConfirm, onClose }) {
   );
 }
 
+function ProductPackPickDialog({ selectedId, onPick, onClose }) {
+  const packs = useSyncExternalStore(subscribeProductPacks, getProductPacks);
+  useEffect(() => {
+    notifyHostModal(true);
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); notifyHostModal(false); };
+  }, [onClose]);
+
+  return (
+    <div className="up-dialog-overlay" onClick={onClose}>
+      <div className="up-dialog up-dialog--pack" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="选择产品包">
+        <div className="up-dialog-head">
+          <span className="up-dialog-title">挂载产品包 <em>资源库 · 产品包 {packs.length}</em></span>
+          <button type="button" className="up-dialog-x" onClick={onClose} aria-label="关闭"><X size={16} /></button>
+        </div>
+        <div className="up-body up-body--lib">
+          {!packs.length && (
+            <p className="pack-pick-empty">资源库里还没有产品包。到「资源库 · 产品包」粘贴 Google Play 链接建一个，这里会自动出现。</p>
+          )}
+          {/* 排成行不排成格：包的信息是「名字 + 地区 + 支付 + 素材」这一串文字，
+              方格只放得下一个 logo，包一少还会在格子里留一大片空 */}
+          <div className="pack-pick-list">
+            {packs.map(pack => {
+              const sel = selectedId === pack.id;
+              const shots = (pack.appImages || []).filter(Boolean).slice(0, 3);
+              return (
+                <button
+                  key={pack.id}
+                  type="button"
+                  className={`pack-pick-row ${sel ? 'picked' : ''}`}
+                  onClick={() => onPick(pack)}
+                >
+                  <img src={pack.logo} alt="" className="pack-pick-logo" />
+                  <span className="pack-pick-text">
+                    <b>{pack.name}</b>
+                    <em>{packRegionLabel(pack.region)} · {pack.paymentName} · {packImageUrls(pack).length} 项素材</em>
+                  </span>
+                  <span className="pack-pick-shots" aria-hidden="true">
+                    {shots.map((u, i) => <img key={i} src={u} alt="" loading="lazy" />)}
+                  </span>
+                  <span className="pack-pick-act">
+                    {sel ? <><Check size={13} />已挂</> : '挂载'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="up-foot">
+          <span className="up-foot-hint">一次只挂 1 个；开 Magic 后自动调用包内图</span>
+          <button type="button" className="btn-outline" onClick={onClose}>取消</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductPackDetailModal({ pack, onClose, onSwap = null }) {
+  useEffect(() => {
+    notifyHostModal(true);
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); notifyHostModal(false); };
+  }, [onClose]);
+
+  const slots = [
+    { label: 'Logo', url: pack.logo },
+    ...(pack.appImages || []).map((u, i) => ({ label: `应用图 ${i + 1}`, url: u })),
+    { label: `支付 · ${pack.paymentName || ''}`, url: pack.paymentLogo, kind: 'logo' },
+    { label: `纸钞 · ${pack.noteName || ''}`, url: pack.noteImage, kind: 'note' },
+  ].filter(s => s.url);
+
+  return (
+    <div className="up-dialog-overlay" onClick={onClose}>
+      <div className="up-dialog" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="产品包详情">
+        <div className="up-dialog-head">
+          <span className="up-dialog-title">产品包 · {pack.name}</span>
+          <button type="button" className="up-dialog-x" onClick={onClose} aria-label="关闭"><X size={16} /></button>
+        </div>
+        <div className="up-body">
+          <p className="pack-detail-meta">{packRegionLabel(pack.region)} · {pack.paymentName}</p>
+          <div className="pack-detail-grid">
+            {slots.map((s, i) => (
+              <div key={i} className={`pack-detail-slot${s.kind ? ` pack-detail-slot--${s.kind}` : ''}`}>
+                <span>{s.label}</span>
+                <img src={s.url} alt={s.label} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="up-foot">
+          <span className="up-foot-hint">生成时由 Magic Prompt 按需引用这些图片</span>
+          {/* 「换包」放这儿不放胶囊上：胶囊上挂三个按钮就不叫胶囊了，而想换包的人
+              多半先要看看当前这包是什么 */}
+          <span className="up-foot-btns">
+            {onSwap && <button type="button" className="btn-outline" onClick={onSwap}>换包</button>}
+            <button type="button" className="btn-primary" onClick={onClose}>知道了</button>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── 视频模型选择器：左边模型族、右边该族的具体版本 + 能力标签。
    每个模型族的版本数量由共享配置决定，单版本的族右边就一行。 ── */
 const MP_PANEL_W = 560;   // = .mp-panel 宽度，翻转判定要用，改样式记得同步
@@ -1253,13 +1392,14 @@ export function ModelPicker({ value, onChange }) {
 function Step1InputIdea({
   promptText, setPromptText, injectSeed, refs, onAddLocalFiles, onAddLibraryItems, onRemoveRef, issues,
   onApplyTemplate, onOpenLibrary,
+  mountedPack, onMountPack,
   videoModel, setVideoModel, submitting, magic, setMagic,
   aspect, setAspect, duration, setDuration, count, setCount, onNext,
   longMode = false,
 }) {
   const cfg = modelCfg(videoModel);
   const refCount = REF_KINDS.reduce((n, k) => n + refs[k.key].length, 0);
-  const canProceed = promptText.trim().length > 0 || refCount > 0;
+  const canProceed = promptText.trim().length > 0 || refCount > 0 || !!mountedPack;
   const blocked = !canProceed || submitting || issues.length > 0;
   // 字数上限跟着模型走。换到更短的一档时已写的字不截断——照实报真实字数并标红，
   // 用 Math.min 夹到上限会把"超了"这件事藏起来（底栏还灰着，用户找不到原因）
@@ -1268,6 +1408,8 @@ function Step1InputIdea({
   const overChars = chars > CHAR_MAX;
   const displayModel = modelLabel(videoModel);
   const [assetLibOpen, setAssetLibOpen] = useState(false);
+  const [packPickOpen, setPackPickOpen] = useState(false);
+  const [packDetailOpen, setPackDetailOpen] = useState(false);
 
   return (
     <div className="step-content idea-step1">
@@ -1278,6 +1420,35 @@ function Step1InputIdea({
             ? '已选长时长：发送后进入任务中心，分步确认编排再出片'
             : '用你选的视频模型，把一个创意自动裂变成多条不同脚本的成片'}
         </p>
+      </div>
+
+      {/* 产品包挂在输入框外面：它声明的是「这批视频给哪个产品做」，管着整条的素材与合规口径，
+          不是输入框里的又一个附件——摆进框里会跟参考素材 chip 混成一排，看不出层级。
+          外形跟 .composer 同一套（同宽、同圆角、同面），靠高度和投影分主次。 */}
+      {/* 产品包挂在输入框左上角，一颗小胶囊。它是「这批视频给哪个产品做」的前置声明，
+          不该占一整条——展开的信息（地区/支付/包内图）点开详情看就行。
+          直接并排在 .idea-step1 下会吃到它 30px 的 flex gap，离输入框太远，故单独套一层管间距。 */}
+      <div className="composer-stack">
+      <div className="pack-pill-row">
+        {mountedPack ? (
+          <span className="pack-pill is-on">
+            <button
+              type="button" className="pack-pill-main" onClick={() => setPackDetailOpen(true)}
+              title={`${mountedPack.name} · ${packRegionLabel(mountedPack.region)} · ${mountedPack.paymentName} · ${packImageUrls(mountedPack).length} 项素材，点开看包内图`}
+            >
+              <img src={mountedPack.logo} alt="" />
+              <b>{mountedPack.name}</b>
+            </button>
+            <button type="button" className="pack-pill-x" onClick={() => onMountPack?.(null)} aria-label="取消挂载" title="取消挂载">
+              <X size={11} />
+            </button>
+          </span>
+        ) : (
+          <button type="button" className="pack-pill" onClick={() => setPackPickOpen(true)} title="从资源库挂载产品包，开 Magic 后自动用上包内图">
+            <Package size={13} strokeWidth={1.9} />
+            <b>产品包</b>
+          </button>
+        )}
       </div>
 
       <div className="composer">
@@ -1342,6 +1513,12 @@ function Step1InputIdea({
             <span>时长超过 {cfg.directMax || '单次直出上限'}：发送即创建任务并开始脚本扩写（费用计入任务），在任务详情里确认编排</span>
           </div>
         )}
+        {mountedPack && magic === 'off' && issues.length === 0 && (
+          <div className="composer-warn">
+            <AlertCircle size={13} strokeWidth={2} />
+            <span>已挂产品包，但 Magic Prompt 关闭时不会自动调用包内图片</span>
+          </div>
+        )}
 
         {/* 唯一一条底栏：左＝加料，右＝参数 + 发送 */}
         <div className="composer-bar">
@@ -1376,6 +1553,7 @@ function Step1InputIdea({
           </div>
         </div>
       </div>
+      </div>
 
       {/* 爆款视频库 · 热度从高到低 */}
       <HotShowcase onUse={onApplyTemplate} onOpenLibrary={onOpenLibrary} />
@@ -1384,6 +1562,20 @@ function Step1InputIdea({
         <LibraryPickDialog
           model={videoModel} refs={refs}
           onConfirm={onAddLibraryItems} onClose={() => setAssetLibOpen(false)}
+        />
+      )}
+      {packPickOpen && (
+        <ProductPackPickDialog
+          selectedId={mountedPack?.id}
+          onPick={(pack) => { onMountPack?.(pack); setPackPickOpen(false); }}
+          onClose={() => setPackPickOpen(false)}
+        />
+      )}
+      {packDetailOpen && mountedPack && (
+        <ProductPackDetailModal
+          pack={mountedPack}
+          onSwap={() => { setPackDetailOpen(false); setPackPickOpen(true); }}
+          onClose={() => setPackDetailOpen(false)}
         />
       )}
     </div>

@@ -1,15 +1,74 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import {
   ArrowLeft, RefreshCw, Download, Pencil, GitBranch, Eye,
-  Copy, Check, Loader2, Play, FileText, Info, AlertTriangle, X,
+  Copy, Check, Loader2, Play, FileText, Info, AlertTriangle, X, Package,
 } from 'lucide-react';
 import { notifyHostModal } from './hostModal';
 import { FanoutDialog } from './FanoutDialog';
 import { modelLabel } from './videoModelConfig.mjs';
 import { VIDEO_REGIONS } from './videoRegionConfig.mjs';
+import { packImageUrls, regionLabel as packRegionLabel } from './productPacks.mjs';
 
 // 老任务（这版之前提交的）没有逐条状态，按全成功处理
 const FALLBACK_FAIL = { code: 'E5000', reason: '模型未返回结果。', fix: '直接重新生成即可。' };
+
+function ProductPackInputChip({ pack }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return undefined;
+    notifyHostModal(true);
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); notifyHostModal(false); };
+  }, [open]);
+
+  const slots = [
+    { label: 'Logo', url: pack.logo },
+    ...(pack.appImages || []).map((u, i) => ({ label: `应用图 ${i + 1}`, url: u })),
+    { label: `支付 · ${pack.paymentName || ''}`, url: pack.paymentLogo, kind: 'logo' },
+    { label: `纸钞 · ${pack.noteName || ''}`, url: pack.noteImage, kind: 'note' },
+  ].filter(s => s.url);
+  if (!slots.length) {
+    packImageUrls(pack).forEach((u, i) => slots.push({ label: `素材 ${i + 1}`, url: u }));
+  }
+
+  return (
+    <>
+      <button type="button" className="pack-chip vtd-pack-chip" onClick={() => setOpen(true)} title="查看产品包素材">
+        <img src={pack.logo} alt="" className="pack-chip-logo" />
+        <span className="pack-chip-body">
+          <span className="pack-chip-name">{pack.name}</span>
+          <span className="pack-chip-meta">{packRegionLabel(pack.region)} · {pack.paymentName}</span>
+        </span>
+        <Package size={14} strokeWidth={1.8} />
+      </button>
+      {open && (
+        <div className="up-dialog-overlay" onClick={() => setOpen(false)}>
+          <div className="up-dialog" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="产品包详情">
+            <div className="up-dialog-head">
+              <span className="up-dialog-title">产品包 · {pack.name}</span>
+              <button type="button" className="up-dialog-x" onClick={() => setOpen(false)} aria-label="关闭"><X size={16} /></button>
+            </div>
+            <div className="up-body">
+              <div className="pack-detail-grid">
+                {slots.map((s, i) => (
+                  <div key={i} className={`pack-detail-slot${s.kind ? ` pack-detail-slot--${s.kind}` : ''}`}>
+                    <span>{s.label}</span>
+                    <img src={s.url} alt={s.label} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="up-foot">
+              <span className="up-foot-hint">具体哪张图在调用，见裂变版提示词里的 @图片</span>
+              <button type="button" className="btn-primary" onClick={() => setOpen(false)}>关闭</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 /* 成片预览：点击播放/暂停，未播放时中央播放钮（与克隆详情同一交互语言） */
 function Vid({ src, label }) {
@@ -552,8 +611,17 @@ export function VideoGenTaskDetail({ task, baseTask, onBack, onReEdit, onRegener
                   </div>
                 )}
 
-                {/* 参考图排在文字上面，而且放在滚动区之外——文字一长，图不会被顶走也不会被滚没 */}
-                {images.length > 0 && (
+                {/* 挂了产品包：原始输入只展示包芯片；散图在脚本 tab 的 @ 里体现。
+                    未挂包时仍展示参考图列表。 */}
+                {task.productPack ? (
+                  <div className="vtd-input-assets">
+                    <div className="vtd-input-assets-head">
+                      <Package size={13} strokeWidth={1.6} />
+                      产品包
+                    </div>
+                    <ProductPackInputChip pack={task.productPack} />
+                  </div>
+                ) : images.length > 0 && (
                   <div className="vtd-input-assets">
                     <div className="vtd-input-assets-head">
                       <FileText size={13} strokeWidth={1.6} />

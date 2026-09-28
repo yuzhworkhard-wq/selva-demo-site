@@ -656,10 +656,547 @@ function showModal(type, extra) {
     `;
     window._importFiles = [];
     renderCharUploadZone();
+  } else if (type === 'create-product-pack') {
+    body.className = 'modal';
+    window._packDraft = {
+      step: 'input',
+      fetching: false,
+      generatingPay: false,
+      playUrl: DEMO_PLAY_URL,
+      region: 'br',
+    };
+    renderCreateProductPackModal();
+  } else if (type === 'product-pack-preview') {
+    body.className = 'modal modal-wide';
+    renderProductPackPreviewModal(extra);
   }
 }
 
+function renderProductPackPreviewModal(packId) {
+  const body = document.getElementById('modal-body');
+  const pack = libraryProductPacks.find(p => p.id === packId);
+  if (!body || !pack) return;
+  const regionMeta = PACK_REGION_OPTIONS.find(r => r.value === pack.region);
+  const regionLabel = regionMeta ? regionMeta.label : (pack.region || '未设置地区');
+  const shots = (pack.appImages || []).filter(Boolean);
+  const creator = typeof getUserById === 'function' ? getUserById(pack.creator) : null;
+  body.className = 'modal modal-wide';
+  body.innerHTML = `
+    <div class="char-modal-body">
+      <div class="pp-detail-head">
+        <div class="pp-detail-logo">${pack.logo ? `<img src="${pack.logo}" alt="">` : ''}</div>
+        <div class="pp-detail-ident">
+          <div class="pp-detail-name">${escapeHtml(pack.name)}</div>
+          ${pack.desc ? `<div class="pp-detail-desc">${escapeHtml(pack.desc)}</div>` : ''}
+          <div class="pp-detail-chips">
+            <span class="pp-chip">${escapeHtml(regionLabel)}</span>
+            <span class="pp-chip">${pack.paymentLogo ? `<img class="pp-chip-logo" src="${pack.paymentLogo}" alt="">` : ''}${escapeHtml(pack.paymentName || '未设置支付')}</span>
+            ${pack.noteName ? `<span class="pp-chip">${pack.noteImage ? `<img class="pp-chip-note" src="${pack.noteImage}" alt="">` : ''}${escapeHtml(pack.noteName)}</span>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="pack-detail-cols">
+        <div class="pack-section">
+          <div class="pack-section-head">
+            <span class="pack-section-title">应用画面</span>
+            <span class="pack-section-hint">${shots.length} 张 · 9:16 竖屏</span>
+          </div>
+          ${shots.length
+            ? `<div class="pack-shots">${shots.map((u, i) => `
+                <div class="pack-shot"><img src="${u}" alt=""><span class="pack-shot-tag">${i + 1}</span></div>`).join('')}</div>`
+            : '<div class="pack-section-hint">未添加应用画面</div>'}
+        </div>
+
+        <div class="pack-section">
+          <div class="pack-section-head">
+            <span class="pack-section-title">品牌与本地支付</span>
+          </div>
+          <div class="pack-squares">
+            <div class="pack-square">
+              <div class="pack-square-img">${pack.logo ? `<img src="${pack.logo}" alt="">` : '<div class="pack-slot-empty">未识别</div>'}</div>
+              <div class="pack-square-label">产品 Logo</div>
+            </div>
+            <div class="pack-square">
+              <div class="pack-square-img${pack.paymentLogo ? ' pack-square-img--logo' : ''}">${pack.paymentLogo ? `<img src="${pack.paymentLogo}" alt="">` : '<div class="pack-slot-empty">未生成</div>'}</div>
+              <div class="pack-square-label">支付方式</div>
+              <div class="pack-square-sub">${escapeHtml(pack.paymentName || '')}</div>
+            </div>
+            <div class="pack-square">
+              <div class="pack-square-img pack-square-img--note">${pack.noteImage ? `<img src="${pack.noteImage}" alt="">` : '<div class="pack-slot-empty">未生成</div>'}</div>
+              <div class="pack-square-label">当地纸钞</div>
+              <div class="pack-square-sub">${escapeHtml(pack.noteName || '')}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pp-detail-meta">
+        ${pack.playUrl ? `
+        <div class="pp-detail-meta-row">
+          <span class="pp-detail-meta-key">应用链接</span>
+          <span class="pp-detail-meta-val"><a href="${pack.playUrl}" target="_blank" rel="noopener">${escapeHtml(pack.playUrl)}</a></span>
+        </div>` : ''}
+        <div class="pp-detail-meta-row">
+          <span class="pp-detail-meta-key">创建信息</span>
+          <span class="pp-detail-meta-val">${escapeHtml(creator ? creator.name : '未知')} · ${escapeHtml(pack.createdAt || '')}</span>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="hideModal()">关闭</button>
+      </div>
+    </div>
+  `;
+}
+
+function packRegionFlagCode(value) {
+  const code = String(value || '').toLowerCase();
+  return code === 'uk' ? 'gb' : code;
+}
+
+function packRegionByValue(value) {
+  return PACK_REGION_OPTIONS.find(r => r.value === value) || PACK_REGION_OPTIONS[0];
+}
+
+function matchPackRegionQuery(region, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return true;
+  if (!region) return false;
+  return [region.label, region.value, region.payment]
+    .filter(Boolean)
+    .join('\n')
+    .toLowerCase()
+    .includes(q);
+}
+
+function buildPackRegionGroupsHtml(selected, query) {
+  const groups = PACK_REGION_GROUPS.map(group => ({
+    ...group,
+    regions: group.values
+      .map(v => PACK_REGION_OPTIONS.find(r => r.value === v))
+      .filter(r => r && matchPackRegionQuery(r, query)),
+  })).filter(g => g.regions.length);
+
+  if (!groups.length) {
+    return '<div class="region-picker-empty" role="status">没有匹配的国家或地区</div>';
+  }
+
+  return groups.map(group => `
+    <section class="region-picker-group">
+      <div class="region-picker-group-head"><span>${escapeHtml(group.label)}</span></div>
+      <div class="region-picker-grid">
+        ${group.regions.map(region => {
+          const on = region.value === selected;
+          const code = packRegionFlagCode(region.value);
+          return `
+            <button type="button" class="region-picker-item${on ? ' selected' : ''}"
+              role="option" aria-selected="${on}" onclick="pickPackRegion('${region.value}')">
+              <img class="region-picker-flag" src="https://flagcdn.com/w40/${code}.png" srcset="https://flagcdn.com/w80/${code}.png 2x" width="18" height="12" alt="" loading="lazy">
+              <span class="region-picker-name">${escapeHtml(region.label)}</span>
+              ${on ? `<svg class="region-picker-check" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>` : ''}
+            </button>`;
+        }).join('')}
+      </div>
+    </section>`).join('');
+}
+
+function buildPackRegionPickerHtml(d) {
+  const region = packRegionByValue(d.region);
+  const code = packRegionFlagCode(region.value);
+  const open = !!d.regionPickerOpen;
+  return `
+    <div class="pack-region-pick${open ? ' open' : ''}" id="pack-region-pick">
+      <button type="button" class="pack-region-trigger" id="pack-region-trigger"
+        aria-expanded="${open}" aria-haspopup="listbox"
+        onclick="togglePackRegionPicker(event)" ${d.fetching ? 'disabled' : ''}>
+        <img class="region-picker-flag" src="https://flagcdn.com/w40/${code}.png" srcset="https://flagcdn.com/w80/${code}.png 2x" width="18" height="12" alt="" loading="lazy">
+        <span class="pack-region-trigger-val">${escapeHtml(region.label)}</span>
+        <svg class="pack-region-chev" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      ${open ? `
+      <div class="region-picker-panel pack-region-panel" id="pack-region-panel" role="listbox" aria-label="选择投放地区">
+        <div class="region-picker-search">
+          <label class="region-picker-search-field">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input type="search" id="m-pack-region-q" value="${escapeHtml(d.regionQuery || '')}"
+              placeholder="快速检索国家与地区" aria-label="快速检索国家与地区"
+              oninput="onPackRegionQueryInput(this)">
+          </label>
+        </div>
+        <div class="region-picker-body" id="pack-region-picker-body">
+          ${buildPackRegionGroupsHtml(region.value, d.regionQuery || '')}
+        </div>
+      </div>` : ''}
+    </div>`;
+}
+
+function placePackRegionPanel() {
+  const trigger = document.getElementById('pack-region-trigger');
+  const panel = document.getElementById('pack-region-panel');
+  if (!trigger || !panel) return;
+  const box = trigger.getBoundingClientRect();
+  // 面板至少跟触发器同宽，上限贴近爆款库观感
+  const width = Math.min(Math.max(box.width, 420), Math.min(560, window.innerWidth - 48));
+  const maxHeight = Math.min(440, window.innerHeight - 24);
+  let left = box.left;
+  if (left + width > window.innerWidth - 24) left = Math.max(24, window.innerWidth - 24 - width);
+  if (left < 24) left = 24;
+  const spaceBelow = window.innerHeight - box.bottom - 12;
+  const spaceAbove = box.top - 12;
+  const openBelow = spaceBelow >= 240 || spaceBelow >= spaceAbove;
+  const avail = Math.max(180, openBelow ? spaceBelow : spaceAbove);
+  const height = Math.min(maxHeight, avail);
+  const top = openBelow ? box.bottom + 6 : Math.max(12, box.top - 6 - height);
+  panel.style.top = `${Math.round(top)}px`;
+  panel.style.left = `${Math.round(left)}px`;
+  panel.style.width = `${Math.round(width)}px`;
+  panel.style.maxHeight = `${Math.round(height)}px`;
+}
+
+function unbindPackRegionPickerAway() {
+  if (window._packRegionAway) {
+    document.removeEventListener('mousedown', window._packRegionAway);
+    window._packRegionAway = null;
+  }
+  if (window._packRegionPlace) {
+    window.removeEventListener('resize', window._packRegionPlace);
+    window.removeEventListener('scroll', window._packRegionPlace, true);
+    window._packRegionPlace = null;
+  }
+}
+
+function bindPackRegionPickerAway() {
+  unbindPackRegionPickerAway();
+  const away = (e) => {
+    const root = document.getElementById('pack-region-pick');
+    if (!root || root.contains(e.target)) return;
+    if (!window._packDraft?.regionPickerOpen) return;
+    window._packDraft.regionPickerOpen = false;
+    const playUrl = document.getElementById('m-pack-url')?.value;
+    if (playUrl != null) window._packDraft.playUrl = playUrl;
+    renderCreateProductPackModal();
+  };
+  const place = () => placePackRegionPanel();
+  window._packRegionAway = away;
+  window._packRegionPlace = place;
+  setTimeout(() => document.addEventListener('mousedown', away), 0);
+  window.addEventListener('resize', place);
+  window.addEventListener('scroll', place, true);
+}
+
+function togglePackRegionPicker(event) {
+  event?.stopPropagation();
+  const d = window._packDraft || {};
+  if (d.fetching) return;
+  const playUrl = document.getElementById('m-pack-url')?.value;
+  if (playUrl != null) d.playUrl = playUrl;
+  d.regionPickerOpen = !d.regionPickerOpen;
+  if (!d.regionPickerOpen) d.regionQuery = '';
+  window._packDraft = d;
+  renderCreateProductPackModal();
+}
+
+function onPackRegionQueryInput(el) {
+  const q = el?.value || '';
+  if (!window._packDraft) window._packDraft = {};
+  window._packDraft.regionQuery = q;
+  const body = document.getElementById('pack-region-picker-body');
+  if (body) body.innerHTML = buildPackRegionGroupsHtml(window._packDraft.region, q);
+}
+
+function renderCreateProductPackModal() {
+  const body = document.getElementById('modal-body');
+  if (!body) return;
+  const d = window._packDraft || { step: 'input' };
+  if (!d.region) d.region = 'us';
+  window._packDraft = d;
+
+  if (d.step === 'input' || d.fetching) {
+    body.innerHTML = `
+      <div class="char-modal-body">
+        <h3>创建产品包</h3>
+        <label>Google 应用链接</label>
+        <input type="text" id="m-pack-url" value="${escapeHtml(d.playUrl || '')}" placeholder="https://play.google.com/store/apps/details?id=...">
+        <label>投放地区</label>
+        ${buildPackRegionPickerHtml(d)}
+        ${d.fetching ? '<div class="pack-loading">正在识别应用信息，AI 生成支付方式 logo 与当地纸钞…</div>' : ''}
+        <div class="modal-actions">
+          <button class="btn btn-ghost" onclick="hideModal()" ${d.fetching ? 'disabled' : ''}>取消</button>
+          <button class="btn btn-primary" onclick="startProductPackFetch()" ${d.fetching ? 'disabled' : ''}>${d.fetching ? '识别中…' : '开始识别'}</button>
+        </div>
+      </div>
+    `;
+    if (d.regionPickerOpen) {
+      requestAnimationFrame(() => {
+        placePackRegionPanel();
+        bindPackRegionPickerAway();
+        const q = document.getElementById('m-pack-region-q');
+        if (q) {
+          q.focus();
+          const len = q.value.length;
+          q.setSelectionRange(len, len);
+        }
+      });
+    } else {
+      unbindPackRegionPickerAway();
+    }
+    return;
+  }
+
+  unbindPackRegionPickerAway();
+
+  const shots = (d.appImages || []).filter(Boolean);
+  const shotCells = shots.map((u, i) => `
+    <div class="pack-shot">
+      <img src="${u}" alt="">
+      <span class="pack-shot-tag">${i + 1}</span>
+      <button type="button" class="pack-shot-del" onclick="clearPackAppImage(${i})" aria-label="移除应用图 ${i + 1}">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>`).join('');
+  const addCell = shots.length < 3 ? `
+    <label class="pack-shot pack-shot--add">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      上传
+      <input type="file" accept="image/*" hidden onchange="addPackAppImage(this.files)">
+    </label>` : '';
+
+  body.innerHTML = `
+    <div class="char-modal-body">
+      <h3>确认产品包素材</h3>
+      <label>产品名称</label>
+      <input type="text" id="m-pack-name" value="${escapeHtml(d.name || '')}" placeholder="产品名称">
+
+      <div class="pack-section">
+        <div class="pack-section-head">
+          <span class="pack-section-title">应用画面</span>
+          <span class="pack-section-hint">${shots.length} / 3 张 · 9:16 竖屏</span>
+        </div>
+        <div class="pack-shots">${shotCells}${addCell}</div>
+      </div>
+
+      <div class="pack-section">
+        <div class="pack-section-head">
+          <span class="pack-section-title">品牌与本地支付</span>
+          <span class="pack-section-hint">未识别到的可自己补充</span>
+        </div>
+        <div class="pack-squares">
+          <div class="pack-square">
+            <div class="pack-square-img">
+              ${d.logo ? `<img src="${d.logo}" alt="">` : '<div class="pack-slot-empty">未识别</div>'}
+            </div>
+            <div class="pack-square-label">产品 Logo</div>
+            <div class="pack-slot-actions">
+              <label class="pack-upload-btn">${d.logo ? '上传替换' : '上传补充'}<input type="file" accept="image/*" hidden onchange="replacePackLogo(this.files)"></label>
+            </div>
+          </div>
+          <div class="pack-square">
+            <div class="pack-square-img${!d.generatingPay && d.paymentLogo ? ' pack-square-img--logo' : ''}">
+              ${d.generatingPay
+                ? '<div class="pack-slot-empty">生成中…</div>'
+                : (d.paymentLogo ? `<img src="${d.paymentLogo}" alt="">` : '<div class="pack-slot-empty">未生成</div>')}
+            </div>
+            <div class="pack-square-label">支付方式</div>
+            <div class="pack-square-sub">${d.generatingPay ? 'AI 生成中…' : escapeHtml(d.paymentName || '')}</div>
+            <div class="pack-slot-actions">
+              <label class="pack-upload-btn">上传替换<input type="file" accept="image/*" hidden onchange="replacePackPayment(this.files)"></label>
+            </div>
+          </div>
+          <div class="pack-square">
+            <div class="pack-square-img pack-square-img--note">
+              ${d.generatingNote
+                ? '<div class="pack-slot-empty">生成中…</div>'
+                : (d.noteImage ? `<img src="${d.noteImage}" alt="">` : '<div class="pack-slot-empty">未生成</div>')}
+            </div>
+            <div class="pack-square-label">当地纸钞</div>
+            <div class="pack-square-sub">${d.generatingNote ? 'AI 生成中…' : escapeHtml(d.noteName || '')}</div>
+            <div class="pack-slot-actions">
+              <label class="pack-upload-btn">上传替换<input type="file" accept="image/*" hidden onchange="replacePackNote(this.files)"></label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <label>支付方式不对？输入银行 / 支付名称重新生成</label>
+      <div class="pack-bank-row">
+        <input type="text" id="m-pack-bank" placeholder="例如：BCA、Dana、Pix">
+        <button class="btn btn-ghost" onclick="regenPackPayment()" ${d.generatingPay ? 'disabled' : ''}>重新生成</button>
+      </div>
+      <label>纸钞不对？输入币种 / 国家名称重新生成</label>
+      <div class="pack-bank-row">
+        <input type="text" id="m-pack-note" placeholder="例如：雷亚尔、BRL、印尼">
+        <button class="btn btn-ghost" onclick="regenPackNote()" ${d.generatingNote ? 'disabled' : ''}>重新生成</button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="window._packDraft.step='input';renderCreateProductPackModal()">上一步</button>
+        <button class="btn btn-primary" onclick="confirmCreateProductPack()">确认创建</button>
+      </div>
+    </div>
+  `;
+}
+
+function pickPackRegion(value) {
+  const playUrl = document.getElementById('m-pack-url')?.value;
+  window._packDraft = {
+    ...(window._packDraft || {}),
+    region: value,
+    regionTouched: true,
+    regionPickerOpen: false,
+    regionQuery: '',
+  };
+  if (playUrl != null) window._packDraft.playUrl = playUrl;
+  renderCreateProductPackModal();
+}
+
+function startProductPackFetch() {
+  const playUrl = (document.getElementById('m-pack-url')?.value || '').trim();
+  let region = (window._packDraft && window._packDraft.region) || 'us';
+  if (!playUrl) { toast('请输入 Google 应用链接'); return; }
+  const known = resolvePlayListingDemo(playUrl);
+  if (known?.preferredRegion && !(window._packDraft && window._packDraft.regionTouched)) {
+    region = known.preferredRegion;
+  }
+  window._packDraft = {
+    ...(window._packDraft || {}),
+    playUrl, region, step: 'input', fetching: true,
+    regionPickerOpen: false, regionQuery: '',
+  };
+  renderCreateProductPackModal();
+  setTimeout(() => {
+    const regionMeta = PACK_REGION_OPTIONS.find(r => r.value === region) || PACK_REGION_OPTIONS[0];
+    let name;
+    let logo;
+    let appImages;
+    let desc;
+    if (known) {
+      name = known.name;
+      logo = known.logo;
+      appImages = (known.appImages || []).slice(0, 3);
+      desc = known.desc || '';
+    } else {
+      const idMatch = playUrl.match(/id=([^&]+)/);
+      const rawId = idMatch ? decodeURIComponent(idMatch[1]) : '';
+      const guess = rawId.split('.').pop() || 'DemoApp';
+      name = guess.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Demo App';
+      const ch = name.charAt(0).toUpperCase();
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240"><rect width="240" height="240" rx="52" fill="#6161ff"/><text x="120" y="148" text-anchor="middle" font-family="system-ui,sans-serif" font-size="110" font-weight="700" fill="#fff">${ch}</text></svg>`;
+      logo = 'data:image/svg+xml,' + encodeURIComponent(svg);
+      appImages = ['clone/frames/frame_01.jpg', 'clone/frames/frame_03.jpg', 'clone/frames/frame_06.jpg'];
+      desc = '';
+    }
+    window._packDraft = {
+      playUrl, region, step: 'confirm', fetching: false, generatingPay: false,
+      name,
+      desc,
+      logo,
+      appImages,
+      paymentName: regionMeta.payment,
+      paymentLogo: packPaymentLogo(regionMeta.payment, regionMeta.color),
+      ...packRegionNote(regionMeta.value),
+    };
+    renderCreateProductPackModal();
+  }, 1100);
+}
+
+function replacePackLogo(files) {
+  const file = files && files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  window._packDraft.logo = url;
+  renderCreateProductPackModal();
+}
+
+function replacePackNote(files) {
+  const file = files && files[0];
+  if (!file) return;
+  window._packDraft.noteImage = URL.createObjectURL(file);
+  renderCreateProductPackModal();
+}
+
+function replacePackPayment(files) {
+  const file = files && files[0];
+  if (!file) return;
+  window._packDraft.paymentLogo = URL.createObjectURL(file);
+  renderCreateProductPackModal();
+}
+
+function regenPackNote() {
+  const q = (document.getElementById('m-pack-note')?.value || '').trim();
+  if (!q) { toast('请输入币种或国家名称'); return; }
+  window._packDraft.generatingNote = true;
+  renderCreateProductPackModal();
+  setTimeout(() => {
+    Object.assign(window._packDraft, packNoteByName(q), { generatingNote: false });
+    renderCreateProductPackModal();
+    toast(`已重新生成「${window._packDraft.noteName}」纸钞`);
+  }, 900);
+}
+
+function addPackAppImage(files) {
+  const file = files && files[0];
+  if (!file) return;
+  const d = window._packDraft;
+  d.appImages = d.appImages || [];
+  if (d.appImages.length >= 3) { toast('应用图最多 3 张'); return; }
+  d.appImages.push(URL.createObjectURL(file));
+  renderCreateProductPackModal();
+}
+
+function clearPackAppImage(idx) {
+  const d = window._packDraft;
+  if (!d?.appImages) return;
+  d.appImages.splice(idx, 1);
+  renderCreateProductPackModal();
+}
+
+function regenPackPayment() {
+  const bank = (document.getElementById('m-pack-bank')?.value || '').trim();
+  if (!bank) { toast('请输入银行或支付名称'); return; }
+  window._packDraft.generatingPay = true;
+  renderCreateProductPackModal();
+  setTimeout(() => {
+    const colors = ['#16a34a', '#2563eb', '#db2777', '#ca8a04', '#7c3aed'];
+    const color = colors[bank.length % colors.length];
+    window._packDraft.paymentName = bank;
+    window._packDraft.paymentLogo = packPaymentLogo(bank, color);
+    window._packDraft.generatingPay = false;
+    renderCreateProductPackModal();
+    toast(`已重新生成「${bank}」支付 logo`);
+  }, 900);
+}
+
+function confirmCreateProductPack() {
+  const d = window._packDraft || {};
+  const name = (document.getElementById('m-pack-name')?.value || d.name || '').trim();
+  if (!name) { toast('请填写产品名称'); return; }
+  if (!d.logo) { toast('请补充产品 Logo'); return; }
+
+  const regionMeta = PACK_REGION_OPTIONS.find(r => r.value === d.region);
+  libraryProductPacks.unshift({
+    id: 'pp-' + Date.now(),
+    name,
+    desc: d.desc || `${regionMeta ? regionMeta.label : d.region} · ${d.paymentName || '支付'}`,
+    region: d.region,
+    playUrl: d.playUrl || '',
+    logo: d.logo,
+    appImages: (d.appImages || []).slice(0, 3),
+    paymentName: d.paymentName || 'Pay',
+    paymentLogo: d.paymentLogo || packPaymentLogo('Pay'),
+    noteName: d.noteName || packRegionNote(d.region).noteName,
+    noteImage: d.noteImage || packRegionNote(d.region).noteImage,
+    creator: currentUser.id,
+    createdAt: new Date().toISOString().slice(0, 10),
+  });
+  hideModal();
+  libraryTab = 'product-packs';
+  renderLibrary();
+  pushProductPacksToCloneTool();   // 新建完不用刷新，视频生成那边的挂载列表立刻有它
+  toast(`产品包「${name}」已创建`);
+}
+
 function hideModal() {
+  unbindPackRegionPickerAway();
   cleanupVideoPlayerModal();
   cleanupAssetPreviewModal();
   currentBusinessAssignmentId = '';
@@ -1516,6 +2053,7 @@ function openToolDetail(toolId) {
 let pendingCloneFlowType = 'selva-clone-open';
 let pendingViralLibraryTag = '全部';
 let pendingViralLibrarySource = 'TikTok';
+let pendingMountPackId = null;   // 从资源库「用它生成视频」进来时，要预挂的产品包
 function ensureCloneFrame() {
   let overlay = document.getElementById('cloneToolOverlay');
   if (!overlay) {
@@ -1528,6 +2066,31 @@ function ensureCloneFrame() {
   }
   return overlay;
 }
+/* 产品包在平台资源库里建、在子应用的视频生成里挂，两边得是同一批。
+   子应用不共享这份内存，所以整库序列化推过去；它按 id 覆盖，删掉的包那边也跟着没。 */
+function buildProductPackSeeds() {
+  if (typeof libraryProductPacks === 'undefined') return [];
+  return libraryProductPacks.map(p => ({
+    id: p.id,
+    name: p.name,
+    desc: p.desc || '',
+    region: p.region,
+    logo: p.logo,
+    appImages: (p.appImages || []).filter(Boolean),
+    paymentName: p.paymentName,
+    paymentLogo: p.paymentLogo,
+    noteName: p.noteName || '',
+    noteImage: p.noteImage || '',
+    creator: p.creator,
+  }));
+}
+function pushProductPacksToCloneTool() {
+  const frame = document.querySelector('#cloneToolOverlay iframe');
+  if (!frame || !frame.contentWindow) return;   // iframe 还没建，就绪握手时会补推
+  frame.contentWindow.postMessage({ type: 'selva-clone-packs', packs: buildProductPackSeeds() }, '*');
+}
+window.pushProductPacksToCloneTool = pushProductPacksToCloneTool;
+
 function openCloneTool() {
   pendingCloneFlowType = 'selva-clone-open';
   const overlay = ensureCloneFrame();
@@ -1536,13 +2099,23 @@ function openCloneTool() {
   // 子应用尚在加载时消息会丢——无碍，它初始即处于打开态
   if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-clone-open' }, '*');
 }
-function openVideoGenTool() {
+function openVideoGenTool(mountPackId = null) {
   pendingCloneFlowType = 'selva-vgen-open';
+  pendingMountPackId = mountPackId || null;
   const overlay = ensureCloneFrame();
   overlay.style.display = 'block';
   const frame = overlay.querySelector('iframe');
-  if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-vgen-open' }, '*');
+  pushProductPacksToCloneTool();   // 每次进工具都对一次库，刚在资源库建的包立刻能挂
+  if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'selva-vgen-open', mountPackId: pendingMountPackId }, '*');
 }
+// 资源库产品包卡 →「用它生成视频」：开视频生成并把这个包直接挂上，不用进去再选一遍
+function useProductPackInVideoGen(packId) {
+  const pack = libraryProductPacks.find(p => p.id === packId);
+  if (!pack) { toast('找不到该产品包'); return; }
+  openVideoGenTool(packId);
+  toast(`已带着产品包「${pack.name}」进入视频生成`);
+}
+window.useProductPackInVideoGen = useProductPackInVideoGen;
 function openVideoFanoutTool() {
   pendingCloneFlowType = 'selva-vfanout-open';
   const overlay = ensureCloneFrame();
@@ -1664,7 +2237,13 @@ window.addEventListener('message', (e) => {
     const frame = document.querySelector('#cloneToolOverlay iframe');
     if (frame && frame.contentWindow) {
       frame.contentWindow.postMessage({ type: 'selva-clone-seed', tasks: buildVGenTaskSeeds() }, '*');
-      frame.contentWindow.postMessage({ type: pendingCloneFlowType, initialTag: pendingViralLibraryTag, initialSource: pendingViralLibrarySource }, '*');
+      frame.contentWindow.postMessage({ type: 'selva-clone-packs', packs: buildProductPackSeeds() }, '*');
+      frame.contentWindow.postMessage({
+        type: pendingCloneFlowType,
+        initialTag: pendingViralLibraryTag,
+        initialSource: pendingViralLibrarySource,
+        mountPackId: pendingMountPackId,
+      }, '*');
     }
   }
   if (e.data.type === 'selva-clone-task' && e.data.task) upsertCloneTask(e.data.task);

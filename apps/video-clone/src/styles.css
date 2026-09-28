@@ -4950,6 +4950,108 @@ body {
 /* 挂载素材 chip */
 .idea-dock { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 6px 12px; }
 .idea-dock-imgs { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── 产品包胶囊：输入框左上角 ──
+   左边缘对齐 .composer 的外框，看着是挂在这张卡上的一颗标签。
+   地区/支付/包内图这些展开信息不往胶囊上堆，点开详情看。 */
+.composer-stack {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  width: 100%; max-width: 800px;
+}
+.pack-pill-row { display: flex; align-items: center; width: 100%; }
+.pack-pill {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  height: 28px; padding: 0 11px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: transparent; color: var(--text-secondary); cursor: pointer;
+  font-size: 12px; font-family: inherit;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+.pack-pill:hover { border-color: var(--border-light); background: var(--bg-surface); color: var(--text-primary); }
+.pack-pill b { font-weight: 500; }
+/* 挂上之后胶囊是「本体 + 取消」两个按钮拼的，外壳只当容器，自己不吃点击 */
+.pack-pill.is-on {
+  gap: 1px; padding: 0 2px 0 3px; cursor: default;
+  border-color: var(--border-light); background: var(--bg-surface); color: var(--text-primary);
+}
+.pack-pill-main {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  height: 22px; padding: 0 7px 0 2px;
+  border: none; border-radius: 999px; background: transparent;
+  color: inherit; cursor: pointer; font-size: 12px; font-family: inherit;
+  transition: background var(--transition);
+}
+.pack-pill-main:hover { background: rgba(255, 255, 255, 0.07); }
+.pack-pill-main img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.pack-pill-main b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pack-pill-x {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 22px; height: 22px; padding: 0;
+  border: none; border-radius: 50%; background: transparent;
+  color: var(--text-muted); cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.pack-pill-x:hover { background: var(--danger); color: #fff; }
+.pack-pill:focus-visible,
+.pack-pill-main:focus-visible,
+.pack-pill-x:focus-visible,
+.pack-pick-row:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+
+.pack-chip {
+  display: inline-flex; align-items: center; gap: 10px;
+  max-width: 100%; padding: 6px 12px 6px 6px;
+  border: 1px solid var(--border-light); border-radius: 12px;
+  background: var(--bg-page); color: var(--text-primary); cursor: pointer; text-align: left;
+}
+.pack-chip:hover { border-color: var(--accent, #7c3aed); }
+.pack-chip-logo { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+.pack-chip-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pack-chip-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pack-chip-meta { font-size: 11px; color: var(--text-muted); }
+.pack-chip-ico { color: var(--text-muted); flex-shrink: 0; }
+
+/* 挂载选择弹窗：一行一个包 */
+.up-dialog--pack { max-width: 560px; }
+.pack-pick-empty { margin: 0 0 12px; font-size: 12.5px; line-height: 1.6; color: var(--text-muted); }
+.pack-pick-list { display: flex; flex-direction: column; gap: 8px; }
+.pack-pick-row {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--bg-page); color: inherit; cursor: pointer; text-align: left;
+  transition: border-color var(--transition), background var(--transition);
+}
+.pack-pick-row:hover { border-color: var(--border-light); background: var(--bg-card); }
+.pack-pick-row.picked { border-color: var(--accent); background: var(--accent-subtle); }
+.pack-pick-logo { width: 42px; height: 42px; border-radius: 11px; object-fit: cover; flex-shrink: 0; }
+.pack-pick-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.pack-pick-text b { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+.pack-pick-text em {
+  font-style: normal; font-size: 11.5px; color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pack-pick-shots { display: flex; gap: 4px; flex-shrink: 0; }
+.pack-pick-shots img {
+  width: 25px; height: 40px; border-radius: 5px; object-fit: cover;
+  border: 1px solid var(--border); display: block;
+}
+.pack-pick-act {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  height: 28px; padding: 0 12px; flex-shrink: 0;
+  border: 1px solid var(--border-light); border-radius: var(--radius-md);
+  font-size: 12px; color: var(--text-secondary);
+  transition: color var(--transition), border-color var(--transition);
+}
+.pack-pick-row:hover .pack-pick-act { color: var(--text-primary); border-color: var(--accent); }
+.pack-pick-row.picked .pack-pick-act { color: var(--accent); border-color: var(--accent); }
+.pack-detail-meta { font-size: 12px; color: var(--text-muted); margin: 0 0 12px; }
+.pack-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+.pack-detail-slot { display: flex; flex-direction: column; gap: 6px; }
+.pack-detail-slot span { font-size: 11px; color: var(--text-muted); }
+.pack-detail-slot img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; border: 1px solid var(--border-light); }
+.pack-detail-slot--logo img { object-fit: contain; background: #fff; padding: 12%; box-sizing: border-box; }
+.pack-detail-slot--note img { object-fit: contain; background: #141515; }
+.vtd-pack-chip { margin-top: 4px; }
 .idea-img-chip { position: relative; width: 48px; height: 48px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-light); }
 .idea-chip-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
 .idea-chip-close {

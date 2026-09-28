@@ -11,6 +11,7 @@ import { BatchMixTaskDetail } from './BatchMixTaskDetail';
 import { buildFanoutScripts, buildVariantScripts, readVideoDims, FANOUT_DIMS } from './briefParser';
 import { buildLongVideoPlan } from './longVideoPlan.mjs';
 import { normalizeRegions } from './videoRegionConfig.mjs';
+import { setHostProductPacks } from './productPacks.mjs';
 import { SOURCES } from './viralLibrary.mjs';
 import './styles.css';
 
@@ -27,7 +28,9 @@ import './styles.css';
    父 → 子 {type:'selva-clone-hide'}                      宿主侧栏切换走（暂停视频、标记关闭态）
    父 → 子 {type:'selva-clone-open-task', id}             从任务中心打开任务详情
    父 → 子 {type:'selva-clone-seed', tasks:[...]}         平台里那些「早于本次会话」的视频生成任务，
-                                                          点开也要看到同一套详情，故 iframe 一就绪就灌进任务表 */
+                                                          点开也要看到同一套详情，故 iframe 一就绪就灌进任务表
+   父 → 子 {type:'selva-clone-packs', packs:[...]}        平台资源库的产品包全量。产品包在平台侧建、在这里挂，
+                                                          就绪时推一次，库里增删改再推一次，两边同一批 */
 
 // 任务存 module 级：CloneModal 重挂载（重新开始/完成重置）不影响已提交任务；页面刷新即清（与宿主 mock 数据同生命周期）
 let taskStore = [];
@@ -164,6 +167,7 @@ export default function EmbedApp() {
   const [taskId, setTaskId] = useState(null);
   const [editSeed, setEditSeed] = useState(null);     // 「重新编辑」注入：{taskId, videoUrl, promptHtml, seq}
   const [frameResume, setFrameResume] = useState(null); // 套边框草稿：点任务中心回来继续 {taskId, name, draft, rev}
+  const [mountPackSeed, setMountPackSeed] = useState(null); // 平台资源库带进来要预挂的产品包 {id, seq}
   const [libraryTag, setLibraryTag] = useState('全部');
   const [librarySource, setLibrarySource] = useState('TikTok');
   const libraryUseRef = useRef(null);                  // 从视频生成进入库时，保留当前输入卡的模板回填函数
@@ -253,6 +257,7 @@ export default function EmbedApp() {
       variants: p.variants || null,       // 裂变 / 生成 / 混剪：每条变体
       sourceText: p.sourceText || null,   // 原始输入（N 条共同来源）
       images: p.images || null,           // 参考素材（N 条共用）
+      productPack: p.productPack !== undefined ? p.productPack : (task.productPack || null),
       refVideos: p.refVideos || null,     // 参考视频 / 音频：只有部分模型收，详情页按名字列
       refAudios: p.refAudios || null,
       mixMeta: p.mixMeta || null,         // 批量混剪：配乐 / 保留原声
@@ -659,8 +664,14 @@ export default function EmbedApp() {
         );
         bump();   // taskStore 是 module 级的，改了不会自己重渲染
       }
+      // 产品包全量覆盖（不是增量补齐）：平台库里删掉的包，这里也不该还能挂
+      if (t === 'selva-clone-packs' && Array.isArray(e.data.packs)) setHostProductPacks(e.data.packs);
       if (t === 'selva-clone-open') { setFlowType('clone'); setView('flow'); setCloneOpen(true); }
-      if (t === 'selva-vgen-open') { setFlowType('vgen'); setView('flow'); setCloneOpen(true); }
+      if (t === 'selva-vgen-open') {
+        setFlowType('vgen'); setView('flow'); setCloneOpen(true);
+        // 资源库「用它生成视频」带过来的包：seq 保证连点同一个包也能再挂一次
+        if (e.data.mountPackId) setMountPackSeed({ id: e.data.mountPackId, seq: Date.now() });
+      }
       if (t === 'selva-vfanout-open') { setFlowType('fanout'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-vmix-open') { setFlowType('mix'); setView('flow'); setCloneOpen(true); }
       if (t === 'selva-vframe-open') {
@@ -739,6 +750,7 @@ export default function EmbedApp() {
             onOpenLibrary={openViralLibrary}
             onStartClone={() => startLibraryTool('clone')}
             onStartFanout={() => startLibraryTool('fanout')}
+            mountPackSeed={mountPackSeed}
             initialSourceText={editSeed ? editSeed.sourceText : ''}
             initialImages={editSeed ? editSeed.images : null}
             initialVideos={editSeed ? editSeed.refVideos : null}
